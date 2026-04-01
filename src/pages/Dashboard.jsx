@@ -3,6 +3,32 @@ import { collection, addDoc, query, where, onSnapshot, orderBy } from "firebase/
 import { signOut } from "firebase/auth";
 import { db, auth } from "../firebase";
 
+const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
+const GITHUB_OWNER = "ahmedechennoufi";
+const GITHUB_REPO = "agro-berry-manager";
+const GITHUB_FILE = "backups/agro-berry-data.json";
+
+async function saveToGitHub(newMovement) {
+  // 1. Get current file
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json" }
+  });
+  const fileData = await res.json();
+  const sha = fileData.sha;
+  const currentData = JSON.parse(atob(fileData.content.replace(/\n/g, "")));
+
+  // 2. Add new movement
+  currentData.movements.push({ ...newMovement, id: Date.now() });
+
+  // 3. Save back to GitHub
+  const updatedContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentData, null, 2))));
+  await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+    body: JSON.stringify({ message: `[${newMovement.farm}] ${newMovement.type}: ${newMovement.product} ${newMovement.quantity}${newMovement.unit}`, content: updatedContent, sha })
+  });
+}
+
 const TYPES = [
   { value: "consumption", label: "Consommation", color: "#e24b4a", icon: "🔥" },
   { value: "exit", label: "Sortie magasin", color: "#BA7517", icon: "📤" },
@@ -51,17 +77,36 @@ export default function Dashboard({ user, userInfo }) {
     e.preventDefault();
     setLoading(true);
     try {
-      await addDoc(collection(db, "demandes"), {
-        ...form,
+      const today = new Date().toISOString().split("T")[0];
+      const movement = {
+        type: form.type === "consumption" ? "consumption" : form.type === "exit" ? "exit" : form.type === "entry" ? "entry" : "transfer-out",
+        product: form.product,
         quantity: parseFloat(form.quantity),
+        unit: form.unit,
+        farm: farmName,
+        date: today,
+        culture: form.culture || undefined,
+        destination: form.destination || undefined,
+        toFarm: form.toFarm || undefined,
+        notes: form.notes || undefined,
+        saisiepar: user.email,
+      };
+      // Remove undefined fields
+      Object.keys(movement).forEach(k => movement[k] === undefined && delete movement[k]);
+
+      await saveToGitHub(movement);
+
+      // Also save to Firestore for history
+      await addDoc(collection(db, "demandes"), {
+        ...movement,
         farmId: user.uid,
         farmName,
-        status: "pending",
+        status: "saved",
         createdAt: new Date().toISOString(),
-        createdBy: user.email,
       });
+
       setSuccess(true);
-      setForm({ type: "consumption", product: "", quantity: "", unit: "", culture: "", destination: "", notes: "", toFarm: "" });
+      setForm({ type: "consumption", product: "", quantity: "", unit: "KG", culture: "", destination: "", notes: "", toFarm: "" });
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
       alert("Erreur: " + err.message);
@@ -69,7 +114,7 @@ export default function Dashboard({ user, userInfo }) {
     setLoading(false);
   };
 
-  const pending = demandes.filter(d => d.status === "pending").length;
+  const saved = demandes.filter(d => d.status === "saved").length;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f5f0", fontFamily: "system-ui, sans-serif" }}>
@@ -83,9 +128,9 @@ export default function Dashboard({ user, userInfo }) {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {pending > 0 && (
-            <span style={{ background: "#FAEEDA", color: "#633806", fontSize: 12, padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>
-              {pending} en attente
+          {saved > 0 && (
+            <span style={{ background: "#EAF3DE", color: "#27500A", fontSize: 12, padding: "3px 10px", borderRadius: 20, fontWeight: 500 }}>
+              {saved} saisies
             </span>
           )}
           <button onClick={() => signOut(auth)} style={{ background: "none", border: "1px solid #ddd", borderRadius: 8, padding: "6px 12px", fontSize: 13, cursor: "pointer", color: "#666" }}>
@@ -113,7 +158,7 @@ export default function Dashboard({ user, userInfo }) {
 
             {success && (
               <div style={{ background: "#EAF3DE", color: "#27500A", padding: "12px 16px", borderRadius: 8, marginBottom: 16, fontSize: 14, fontWeight: 500 }}>
-                ✅ Demande envoyée — en attente de validation
+                ✅ Saisie enregistrée directement dans le stock !
               </div>
             )}
 
