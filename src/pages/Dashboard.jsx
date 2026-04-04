@@ -72,7 +72,7 @@ function calcFarmStock(movements, farmName, stockInitial) {
 
 function getFarmMovements(movements, farmName) {
   return movements
-    .filter(mv => mv.farm === farmName || (mv.type === "transfer-in" && mv.farm === farmName))
+    .filter(mv => mv.farm === farmName || mv.toFarm === farmName)
     .sort((a,b) => new Date(b.date) - new Date(a.date));
 }
 
@@ -107,7 +107,7 @@ export default function Dashboard({ user, userInfo }) {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
-    }).catch(() => {}).finally(() => setLoadingStock(false));
+    }).catch(err => console.error('GitHub error:', err)).finally(() => setLoadingStock(false));
   };
 
   useEffect(() => { loadData(); }, [farmName]);
