@@ -112,6 +112,11 @@ export default function Dashboard({ user, userInfo }) {
 
   useEffect(() => { loadData(); }, [farmName]);
 
+  // Recharger depuis GitHub quand on ouvre l'onglet Mouvements
+  useEffect(() => {
+    if (active === "history") loadData();
+  }, [active]);
+
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
   const filteredStock = farmStock.filter(s => s.product.toLowerCase().includes(stockSearch.toLowerCase()));
   const positiveStock = filteredStock.filter(s => s.qty > 0);
@@ -138,9 +143,11 @@ export default function Dashboard({ user, userInfo }) {
       if (active === "transfer") mv.toFarm = form.toFarm;
       if (form.notes) mv.notes = form.notes;
       mv.saisiepar = user.email;
+      const mvId = Date.now();
+      mv.id = mvId;
       await saveToGitHub(mv);
       await addDoc(collection(db,"demandes"), { ...mv, farmId: user.uid, farmName, status: "saved", createdAt: new Date().toISOString() });
-      setFarmMovements(prev => [mv, ...prev]);
+      setFarmMovements(prev => [{ ...mv }, ...prev]);
       setFarmStock(prev => {
         const updated = [...prev];
         const idx = updated.findIndex(s => s.product === mv.product);
