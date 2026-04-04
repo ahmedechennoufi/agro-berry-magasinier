@@ -47,8 +47,12 @@ async function saveToGitHub(movement) {
   if (!put.ok) throw new Error("Erreur ecriture GitHub " + put.status);
 }
 
-function calcFarmStock(movements, farmName) {
+function calcFarmStock(movements, farmName, stockInitial) {
   const stock = {};
+  // Stock initial comme point de depart
+  for (const s of (stockInitial || [])) {
+    stock[s.product] = { product: s.product, unit: s.unit || "KG", qty: s.quantity || 0 };
+  }
   for (const mv of movements) {
     const p = mv.product;
     if (!stock[p]) stock[p] = { product:p, unit:mv.unit||"KG", qty:0 };
@@ -83,7 +87,8 @@ export default function Dashboard({ user, userInfo }) {
   useEffect(() => {
     fetchGitHubData().then(({data}) => {
       setProducts([...data.products].sort((a,b)=>a.name.localeCompare(b.name)));
-      setFarmStock(calcFarmStock(data.movements, farmName));
+      const stockKey = farmName === "AGRO BERRY 1" ? "stockAB1" : farmName === "AGRO BERRY 2" ? "stockAB2" : "stockAB3";
+      setFarmStock(calcFarmStock(data.movements, farmName, data[stockKey] || []));
     }).catch(()=>{}).finally(()=>setLoadingStock(false));
   }, [farmName]);
 
