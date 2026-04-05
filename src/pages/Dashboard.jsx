@@ -42,9 +42,10 @@ async function fetchGitHubData() {
   return { data: JSON.parse(atob(f.content.replace(/\n/g,""))), sha: f.sha };
 }
 
-async function saveToGitHub(movement) {
+async function saveToGitHub(movements) {
+  const mvArray = Array.isArray(movements) ? movements : [movements];
   const { data, sha } = await fetchGitHubData();
-  data.movements.push({ ...movement, id: Date.now() });
+  mvArray.forEach((mv, i) => data.movements.push({ ...mv, id: Date.now() + i }));
   const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
   const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
     method: "PUT",
@@ -144,10 +145,29 @@ export default function Dashboard({ user, userInfo }) {
       if (active === "transfer") mv.toFarm = form.toFarm;
       if (form.notes) mv.notes = form.notes;
       mv.saisiepar = user.email;
-      const mvId = Date.now();
-      mv.id = mvId;
-      await saveToGitHub(mv);
-      await addDoc(collection(db,"demandes"), { ...mv, farmId: user.uid, farmName, status: "saved", createdAt: new Date().toISOString() });
+
+      const mouvementsToSave = [mv];
+
+      // Si c'est une entrée sur AGB2 ou AGB3 → générer automatiquement une sortie magasin sur AGB1
+      if (active === "entry" && (farmName === "AGRO BERRY 2" || farmName === "AGRO BERRY 3")) {
+        const exitAGB1 = {
+          type: "exit",
+          product: mv.product,
+          quantity: mv.quantity,
+          unit: mv.unit,
+          farm: "AGRO BERRY 1",
+          date: today,
+          notes: `Sortie auto → ${farmName.replace("AGRO BERRY ", "AGB")}`,
+          saisiepar: user.email,
+          autoFrom: farmName,
+        };
+        mouvementsToSave.push(exitAGB1);
+      }
+
+      await saveToGitHub(mouvementsToSave);
+      for (const m of mouvementsToSave) {
+        await addDoc(collection(db,"demandes"), { ...m, farmId: user.uid, farmName: m.farm, status: "saved", createdAt: new Date().toISOString() });
+      }
       setFarmMovements(prev => [{ ...mv }, ...prev]);
       setFarmStock(prev => {
         const updated = [...prev];
@@ -397,7 +417,7 @@ export default function Dashboard({ user, userInfo }) {
           {active !== "history" && active !== "stock" && (
             <div className="page">
               <div className="form-card">
-                {success && <div className="alert success">✓ Enregistré dans le stock avec succès !</div>}
+                {success && <div className="alert success">✓ Enregistré avec succès !{active === "entry" && (farmName === "AGRO BERRY 2" || farmName === "AGRO BERRY 3") ? " · Sortie magasin AGB1 générée automatiquement." : ""}</div>}
                 {error && <div className="alert error">✗ {error}</div>}
                 <form onSubmit={handleSubmit}>
                   <div className="form-grid">
