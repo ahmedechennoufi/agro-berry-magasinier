@@ -265,6 +265,8 @@ export default function Dashboard({ user, userInfo }) {
     } catch(err) { alert("Erreur suppression : " + err.message); }
     setDeletingId(null);
   };
+
+  const activeMenu = MENUS.find(m => m.id === active);
   const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🍓" : "🫐";
   const farmShort = farmName.replace("AGRO BERRY ", "AB");
   const now = new Date();
