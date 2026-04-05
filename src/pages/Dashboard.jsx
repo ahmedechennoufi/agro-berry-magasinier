@@ -122,12 +122,21 @@ export default function Dashboard({ user, userInfo }) {
   const positiveStock = filteredStock.filter(s => s.qty > 0);
   const negativeStock = filteredStock.filter(s => s.qty < 0);
 
+  const [mvDateFrom, setMvDateFrom] = useState("");
+  const [mvDateTo, setMvDateTo] = useState("");
+  const [mvPage, setMvPage] = useState(1);
+  const MV_PER_PAGE = 20;
+
   const filteredMv = farmMovements.filter(mv => {
     const matchSearch = !mvSearch || mv.product?.toLowerCase().includes(mvSearch.toLowerCase());
     const matchFilter = mvFilter === "all" || mv.type === mvFilter ||
       (mvFilter === "entry" && mv.type === "exit" && farmName !== "AGRO BERRY 1");
-    return matchSearch && matchFilter;
+    const matchFrom = !mvDateFrom || mv.date >= mvDateFrom;
+    const matchTo = !mvDateTo || mv.date <= mvDateTo;
+    return matchSearch && matchFilter && matchFrom && matchTo;
   });
+  const mvTotalPages = Math.ceil(filteredMv.length / MV_PER_PAGE);
+  const paginatedMv = filteredMv.slice((mvPage - 1) * MV_PER_PAGE, mvPage * MV_PER_PAGE);
 
   const handleSelectProduct = (p) => {
     fset("product", p.name); fset("unit", p.unit || "KG");
@@ -535,63 +544,121 @@ export default function Dashboard({ user, userInfo }) {
           {/* MOUVEMENTS - équivalent app admin */}
           {active === "history" && (
             <div className="page">
-              <div className="mv-header">
-                <input className="stock-search" style={{maxWidth:320}} placeholder="Rechercher un produit..." value={mvSearch} onChange={e => setMvSearch(e.target.value)} />
-                <button className="refresh-btn" onClick={loadData}>
-                  <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
-                </button>
-                <span style={{fontSize:12,color:"#4b5563",marginLeft:"auto"}}>{filteredMv.length} mouvement{filteredMv.length > 1 ? "s" : ""}</span>
+              {/* Stats */}
+              {(() => {
+                const entries = farmMovements.filter(m => m.type === "exit" && farmName !== "AGRO BERRY 1");
+                const consos = farmMovements.filter(m => m.type === "consumption");
+                const transfers = farmMovements.filter(m => m.type === "transfer-out" || m.type === "transfer-in");
+                return (
+                  <div className="stock-stats" style={{gridTemplateColumns:"repeat(4,1fr)",marginBottom:24}}>
+                    <div className="stat-card" style={{background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(52,199,89,0.2)"}}>
+                      <div className="stat-label">Entrées magasin</div>
+                      <div className="stat-value" style={{fontSize:22,color:"#16a34a"}}>{entries.length}</div>
+                      <div style={{fontSize:11,color:"#86868b",marginTop:4}}>opérations</div>
+                    </div>
+                    <div className="stat-card" style={{background:"linear-gradient(135deg,#fff5f5,#fee2e2)",border:"1px solid rgba(220,38,38,0.2)"}}>
+                      <div className="stat-label">Consommations</div>
+                      <div className="stat-value" style={{fontSize:22,color:"#dc2626"}}>{consos.length}</div>
+                      <div style={{fontSize:11,color:"#86868b",marginTop:4}}>opérations</div>
+                    </div>
+                    <div className="stat-card" style={{background:"linear-gradient(135deg,#f5f3ff,#ede9fe)",border:"1px solid rgba(139,92,246,0.2)"}}>
+                      <div className="stat-label">Transferts</div>
+                      <div className="stat-value" style={{fontSize:22,color:"#7c3aed"}}>{transfers.length}</div>
+                      <div style={{fontSize:11,color:"#86868b",marginTop:4}}>opérations</div>
+                    </div>
+                    <div className="stat-card" style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)"}}>
+                      <div className="stat-label">Total</div>
+                      <div className="stat-value" style={{fontSize:22}}>{farmMovements.length}</div>
+                      <div style={{fontSize:11,color:"#86868b",marginTop:4}}>mouvements</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Filters */}
+              <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
+                  <input className="stock-search" style={{maxWidth:260,flex:1}} placeholder="🔍 Rechercher produit..." value={mvSearch} onChange={e => { setMvSearch(e.target.value); setMvPage(1); }} />
+                  <input type="date" className="form-input" style={{width:140}} value={mvDateFrom} onChange={e => { setMvDateFrom(e.target.value); setMvPage(1); }} />
+                  <input type="date" className="form-input" style={{width:140}} value={mvDateTo} onChange={e => { setMvDateTo(e.target.value); setMvPage(1); }} />
+                  {(mvSearch || mvDateFrom || mvDateTo || mvFilter !== "all") && (
+                    <button className="mv-filter-btn" onClick={() => { setMvSearch(""); setMvDateFrom(""); setMvDateTo(""); setMvFilter("all"); setMvPage(1); }}>🔄 Reset</button>
+                  )}
+                  <button className="refresh-btn" style={{marginLeft:"auto"}} onClick={loadData}>
+                    <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
+                  </button>
+                </div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                  {[
+                    { id:"all",          label:"📦 Tous" },
+                    { id:"entry",        label:"◍ Entrées" },
+                    { id:"consumption",  label:"🔥 Conso" },
+                    { id:"transfer-out", label:"⇌ Transferts" },
+                  ].map(f => (
+                    <button key={f.id} className={`mv-filter-btn ${mvFilter === f.id ? "active" : ""}`}
+                      onClick={() => { setMvFilter(f.id); setMvPage(1); }}>{f.label}
+                    </button>
+                  ))}
+                  <span style={{marginLeft:"auto",fontSize:12,color:"#86868b"}}>{filteredMv.length} mouvement{filteredMv.length > 1 ? "s" : ""}</span>
+                </div>
               </div>
-              <div className="mv-filters">
-                {[
-                  { id:"all", label:"Tous" },
-                  { id:"consumption", label:"Consommations" },
-                  { id:"exit", label:"Sorties" },
-                  { id:"entry", label:"Entrées" },
-                  { id:"transfer-out", label:"Transferts" },
-                ].map(f => (
-                  <button key={f.id} className={`mv-filter-btn ${mvFilter === f.id ? "active" : ""}`} onClick={() => setMvFilter(f.id)}>{f.label}</button>
-                ))}
-              </div>
+
+              {/* Table */}
               {loadingStock ? (
                 <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
               ) : filteredMv.length === 0 ? (
                 <div className="empty-state"><div className="empty-icon">◷</div><div className="empty-text">Aucun mouvement trouvé</div></div>
               ) : (
-                <div className="mv-table">
-                  <div className="mv-table-header">
-                    <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span style={{textAlign:"right"}}>Détail</span>
+                <>
+                  <div className="mv-table">
+                    <div className="mv-table-header" style={{gridTemplateColumns:"110px 1fr 150px 100px 160px"}}>
+                      <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span>Détail</span>
+                    </div>
+                    {paginatedMv.map((mv, i) => {
+                      const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                      const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
+                      const t = isEntryFromMagasin
+                        ? { label: "Entrée magasin", color: "#16a34a", icon: "◍" }
+                        : (TYPE_LABELS[mv.type] || { label: mv.type, color: "#94a3b8", icon: "◷" });
+                      const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
+                      let detail = "";
+                      if (mv.culture) detail = mv.culture + (mv.destination ? " · " + mv.destination : "");
+                      else if (mv.toFarm) detail = "→ " + mv.toFarm.replace("AGRO BERRY ","AB");
+                      else if (mv.fromFarm) detail = "De " + mv.fromFarm.replace("AGRO BERRY ","AB");
+                      else if (mv.autoFrom) detail = "← " + mv.autoFrom.replace("AGRO BERRY ","AB");
+                      return (
+                        <div key={mv.id || i} className="mv-row" style={{gridTemplateColumns:"110px 1fr 150px 100px 160px"}}>
+                          <span className="mv-date">{mv.date}</span>
+                          <div>
+                            <div className="mv-product">{mv.product}</div>
+                            <div style={{fontSize:11,color:"#86868b"}}>{mv.unit}</div>
+                          </div>
+                          <div>
+                            <span className="mv-type" style={{background:`${t.color}18`,color:t.color}}>
+                              {t.icon} {t.label}
+                            </span>
+                          </div>
+                          <div className="mv-qty" style={{color:isPlus?"#16a34a":"#dc2626",textAlign:"right"}}>
+                            {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)}
+                          </div>
+                          <div style={{fontSize:12,color:"#6e6e73"}}>{detail||"—"}</div>
+                        </div>
+                      );
+                    })}
                   </div>
-                  {filteredMv.map((mv, i) => {
-                    // Pour AGB2/AGB3 : les sorties magasin (exit) viennent du magasin centrale → afficher comme Entrée
-                    const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
-                    const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
-                    const t = isEntryFromMagasin
-                      ? { label: "Entrée magasin", color: "#34d399", icon: "◍" }
-                      : (TYPE_LABELS[mv.type] || { label: mv.type, color: "#94a3b8", icon: "◷" });
-                    const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
-                    return (
-                      <div key={mv.id || i} className="mv-row">
-                        <span className="mv-date">{mv.date}</span>
-                        <div>
-                          <div className="mv-product">{mv.product}</div>
-                          {(mv.culture || mv.destination) && <div className="mv-sub">{mv.culture}{mv.destination ? ` · ${mv.destination}` : ""}</div>}
-                          {mv.supplier && <div className="mv-sub">{mv.supplier}</div>}
-                          {mv.toFarm && <div className="mv-sub">→ {mv.toFarm}</div>}
-                        </div>
-                        <div>
-                          <span className="mv-type" style={{ background: `${t.color}18`, color: t.color }}>
-                            {t.icon} {t.label}
-                          </span>
-                        </div>
-                        <div className="mv-qty" style={{ color: isPlus ? "#4ade80" : "#f87171" }}>
-                          {isPlus ? "+" : "-"}{mv.quantity}
-                        </div>
-                        <div className="mv-detail">{mv.unit}</div>
+                  {mvTotalPages > 1 && (
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",background:"#f5f5f7",border:"1px solid rgba(0,0,0,0.08)",borderTop:"none",borderRadius:"0 0 16px 16px",marginTop:-1}}>
+                      <span style={{fontSize:13,color:"#86868b"}}>{(mvPage-1)*MV_PER_PAGE+1}–{Math.min(mvPage*MV_PER_PAGE,filteredMv.length)} sur {filteredMv.length}</span>
+                      <div style={{display:"flex",gap:6}}>
+                        <button className="mv-filter-btn" disabled={mvPage===1} onClick={()=>setMvPage(1)} style={{opacity:mvPage===1?0.4:1}}>«</button>
+                        <button className="mv-filter-btn" disabled={mvPage===1} onClick={()=>setMvPage(p=>p-1)} style={{opacity:mvPage===1?0.4:1}}>‹</button>
+                        <span style={{padding:"7px 14px",fontSize:12,fontWeight:600}}>{mvPage} / {mvTotalPages}</span>
+                        <button className="mv-filter-btn" disabled={mvPage===mvTotalPages} onClick={()=>setMvPage(p=>p+1)} style={{opacity:mvPage===mvTotalPages?0.4:1}}>›</button>
+                        <button className="mv-filter-btn" disabled={mvPage===mvTotalPages} onClick={()=>setMvPage(mvTotalPages)} style={{opacity:mvPage===mvTotalPages?0.4:1}}>»</button>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
