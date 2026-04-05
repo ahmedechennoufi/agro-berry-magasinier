@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { collection, addDoc, query, where, onSnapshot, orderBy } from "firebase/firestore";
 import { signOut } from "firebase/auth";
-import { db, auth } from "../firebase";
+import { auth } from "../firebase";
 
 const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
 const GITHUB_OWNER = "ahmedechennoufi";
@@ -227,9 +226,6 @@ export default function Dashboard({ user, userInfo }) {
       }
 
       await saveToGitHub(mouvementsToSave);
-      for (const m of mouvementsToSave) {
-        await addDoc(collection(db,"demandes"), { ...m, farmId: user.uid, farmName: m.farm, status: "saved", createdAt: new Date().toISOString() });
-      }
       setFarmMovements(prev => [{ ...mv }, ...prev]);
       setFarmStock(prev => {
         const updated = [...prev];
