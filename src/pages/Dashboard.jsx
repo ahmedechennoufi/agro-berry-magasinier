@@ -17,12 +17,10 @@ const FARM_CONFIG = {
 const FARMS = ["AGRO BERRY 1","AGRO BERRY 2","AGRO BERRY 3"];
 
 const ALL_MENUS = [
-  { id:"stock",       label:"Mon Stock",      icon:"◈", color:"#4ade80", farms: null },
-  { id:"consumption", label:"Consommation",   icon:"◉", color:"#f87171", farms: null },
-  { id:"exit",        label:"Sortie magasin", icon:"◎", color:"#fbbf24", farms: ["AGRO BERRY 1"] },
-  { id:"entry",       label:"Entrée",         icon:"◍", color:"#34d399", farms: ["AGRO BERRY 1"] },
-  { id:"transfer",    label:"Transfert",      icon:"⇌", color:"#a78bfa", farms: null },
-  { id:"history",     label:"Mouvements",     icon:"◷", color:"#94a3b8", farms: null },
+  { id:"stock",       label:"Mon Stock",    icon:"◈", color:"#4ade80", farms: null },
+  { id:"consumption", label:"Consommation", icon:"◉", color:"#f87171", farms: null },
+  { id:"transfer",    label:"Transfert",    icon:"⇌", color:"#a78bfa", farms: null },
+  { id:"history",     label:"Mouvements",   icon:"◷", color:"#94a3b8", farms: null },
 ];
 
 const TYPE_LABELS = {
@@ -511,16 +509,6 @@ export default function Dashboard({ user, userInfo }) {
                         </select>
                       </div>
                     </>}
-                    {active === "entry" && <>
-                      <div className="form-group">
-                        <div className="form-label">Fournisseur</div>
-                        <input className="form-input" value={form.supplier} onChange={e => fset("supplier", e.target.value)} placeholder="Nom du fournisseur" />
-                      </div>
-                      <div className="form-group">
-                        <div className="form-label">Prix (MAD)</div>
-                        <input type="number" className="form-input" value={form.price} onChange={e => fset("price", e.target.value)} placeholder="0.00" min="0" step="0.01" />
-                      </div>
-                    </>}
                     {active === "transfer" && (
                       <div className="form-group full">
                         <div className="form-label">Vers la ferme *</div>
@@ -528,17 +516,6 @@ export default function Dashboard({ user, userInfo }) {
                           <option value="">Sélectionner</option>
                           {FARMS.filter(f => f !== farmName).map(f => <option key={f}>{f}</option>)}
                         </select>
-                      </div>
-                    )}
-                    {active === "exit" && (
-                      <div className="form-group full">
-                        <div className="form-label">Ferme destinataire</div>
-                        <select className="form-input" value={form.toFarm} onChange={e => fset("toFarm", e.target.value)}>
-                          <option value="">Sortie externe (pas de ferme)</option>
-                          <option value="AGRO BERRY 2">AGRO BERRY 2</option>
-                          <option value="AGRO BERRY 3">AGRO BERRY 3</option>
-                        </select>
-                        {form.toFarm && <div style={{fontSize:11,color:"#16a34a",marginTop:6,fontWeight:500}}>✓ Une entrée sera créée automatiquement sur {form.toFarm.replace("AGRO BERRY ","AGB")}</div>}
                       </div>
                     )}
                     <div className="form-group full">
