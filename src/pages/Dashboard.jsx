@@ -54,46 +54,54 @@ async function saveToGitHub(movements) {
 }
 
 function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
-  // Trouver le dernier inventaire physique pour cette ferme
-  const farmInvs = (physicalInventories || [])
-    .filter(inv => inv.farm === farmName && inv.data)
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const latestInv = farmInvs[0];
+  try {
+    // Trouver le dernier inventaire physique pour cette ferme
+    const farmInvs = (physicalInventories || [])
+      .filter(inv => inv.farm === farmName && inv.data && typeof inv.data === "object")
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const latestInv = farmInvs[0];
 
-  const stock = {};
+    const stock = {};
 
-  if (latestInv) {
-    // Utiliser l'inventaire physique comme base (comme l'app admin)
-    for (const [product, qty] of Object.entries(latestInv.data)) {
-      if (qty > 0) stock[product] = { product, unit: "KG", qty };
+    if (latestInv) {
+      // Base = inventaire physique (comme l'app admin)
+      Object.entries(latestInv.data).forEach(([product, qty]) => {
+        const quantity = parseFloat(qty) || 0;
+        if (quantity > 0) stock[product] = { product, unit: "KG", qty: quantity };
+      });
+      // Mouvements APRÈS la date d'inventaire (strictement après, comme l'admin)
+      const invDate = latestInv.date;
+      for (const mv of movements) {
+        if (!mv.date || mv.date <= invDate) continue;
+        const p = mv.product;
+        if (!p) continue;
+        if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
+        if (mv.type === "exit"         && mv.farm === farmName) stock[p].qty += mv.quantity || 0;
+        if (mv.type === "transfer-in"  && mv.farm === farmName) stock[p].qty += mv.quantity || 0;
+        if (mv.type === "consumption"  && mv.farm === farmName) stock[p].qty -= mv.quantity || 0;
+        if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity || 0;
+      }
+    } else {
+      // Pas d'inventaire physique → stockInitial + tous mouvements
+      for (const s of (stockInitial || [])) {
+        stock[s.product] = { product: s.product, unit: s.unit || "KG", qty: s.quantity || 0 };
+      }
+      for (const mv of movements) {
+        const p = mv.product;
+        if (!p) continue;
+        if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
+        if (mv.type === "exit"         && mv.farm === farmName) stock[p].qty += mv.quantity || 0;
+        if (mv.type === "transfer-in"  && mv.farm === farmName) stock[p].qty += mv.quantity || 0;
+        if (mv.type === "consumption"  && mv.farm === farmName) stock[p].qty -= mv.quantity || 0;
+        if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity || 0;
+      }
     }
-    // Appliquer seulement les mouvements APRÈS la date d'inventaire
-    for (const mv of movements) {
-      if (mv.date < latestInv.date) continue;
-      const p = mv.product;
-      if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
-      else if (!stock[p].unit || stock[p].unit === "KG") stock[p].unit = mv.unit || stock[p].unit;
-      if (mv.type === "exit" && mv.farm === farmName) stock[p].qty += mv.quantity;
-      if (mv.type === "transfer-in" && mv.farm === farmName) stock[p].qty += mv.quantity;
-      if (mv.type === "consumption" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-      if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-    }
-  } else {
-    // Pas d'inventaire physique → utiliser stockInitial
-    for (const s of (stockInitial || [])) {
-      stock[s.product] = { product: s.product, unit: s.unit || "KG", qty: s.quantity || 0 };
-    }
-    for (const mv of movements) {
-      const p = mv.product;
-      if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
-      if (mv.type === "exit" && mv.farm === farmName) stock[p].qty += mv.quantity;
-      if (mv.type === "transfer-in" && mv.farm === farmName) stock[p].qty += mv.quantity;
-      if (mv.type === "consumption" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-      if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-    }
+
+    return Object.values(stock).filter(s => Math.abs(s.qty) > 0).sort((a,b) => a.product.localeCompare(b.product));
+  } catch(e) {
+    console.error("calcFarmStock error:", e);
+    return [];
   }
-
-  return Object.values(stock).filter(s => Math.abs(s.qty) > 0).sort((a,b) => a.product.localeCompare(b.product));
 }
 
 function getFarmMovements(movements, farmName) {
