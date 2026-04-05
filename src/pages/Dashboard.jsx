@@ -53,19 +53,46 @@ async function saveToGitHub(movements) {
   if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
 }
 
-function calcFarmStock(movements, farmName, stockInitial) {
+function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
+  // Trouver le dernier inventaire physique pour cette ferme
+  const farmInvs = (physicalInventories || [])
+    .filter(inv => inv.farm === farmName && inv.data)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const latestInv = farmInvs[0];
+
   const stock = {};
-  for (const s of (stockInitial || [])) {
-    stock[s.product] = { product: s.product, unit: s.unit || "KG", qty: s.quantity || 0 };
+
+  if (latestInv) {
+    // Utiliser l'inventaire physique comme base (comme l'app admin)
+    for (const [product, qty] of Object.entries(latestInv.data)) {
+      if (qty > 0) stock[product] = { product, unit: "KG", qty };
+    }
+    // Appliquer seulement les mouvements APRÈS la date d'inventaire
+    for (const mv of movements) {
+      if (mv.date < latestInv.date) continue;
+      const p = mv.product;
+      if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
+      else if (!stock[p].unit || stock[p].unit === "KG") stock[p].unit = mv.unit || stock[p].unit;
+      if (mv.type === "exit" && mv.farm === farmName) stock[p].qty += mv.quantity;
+      if (mv.type === "transfer-in" && mv.farm === farmName) stock[p].qty += mv.quantity;
+      if (mv.type === "consumption" && mv.farm === farmName) stock[p].qty -= mv.quantity;
+      if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity;
+    }
+  } else {
+    // Pas d'inventaire physique → utiliser stockInitial
+    for (const s of (stockInitial || [])) {
+      stock[s.product] = { product: s.product, unit: s.unit || "KG", qty: s.quantity || 0 };
+    }
+    for (const mv of movements) {
+      const p = mv.product;
+      if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
+      if (mv.type === "exit" && mv.farm === farmName) stock[p].qty += mv.quantity;
+      if (mv.type === "transfer-in" && mv.farm === farmName) stock[p].qty += mv.quantity;
+      if (mv.type === "consumption" && mv.farm === farmName) stock[p].qty -= mv.quantity;
+      if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity;
+    }
   }
-  for (const mv of movements) {
-    const p = mv.product;
-    if (!stock[p]) stock[p] = { product: p, unit: mv.unit || "KG", qty: 0 };
-    if (mv.type === "exit" && mv.farm === farmName) stock[p].qty += mv.quantity;
-    if (mv.type === "transfer-in" && mv.farm === farmName) stock[p].qty += mv.quantity;
-    if (mv.type === "consumption" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-    if (mv.type === "transfer-out" && mv.farm === farmName) stock[p].qty -= mv.quantity;
-  }
+
   return Object.values(stock).filter(s => Math.abs(s.qty) > 0).sort((a,b) => a.product.localeCompare(b.product));
 }
 
@@ -105,7 +132,7 @@ export default function Dashboard({ user, userInfo }) {
     setLoadingStock(true);
     fetchGitHubData().then(({ data }) => {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
-      setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || []));
+      setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
     }).catch(err => console.error('GitHub error:', err)).finally(() => setLoadingStock(false));
   };
