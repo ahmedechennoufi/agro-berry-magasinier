@@ -263,7 +263,7 @@ export default function Dashboard({ user, userInfo }) {
   };
 
   const activeMenu = MENUS.find(m => m.id === active);
-  const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🍓" : "🫐";
+  const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🫐" : "🫐";
   const farmShort = farmName.replace("AGRO BERRY ", "AB");
   const now = new Date();
   const dateStr = now.toLocaleDateString("fr-FR", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
