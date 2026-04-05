@@ -20,7 +20,7 @@ const ALL_MENUS = [
   { id:"stock",       label:"Mon Stock",      icon:"◈", color:"#4ade80", farms: null },
   { id:"consumption", label:"Consommation",   icon:"◉", color:"#f87171", farms: null },
   { id:"exit",        label:"Sortie magasin", icon:"◎", color:"#fbbf24", farms: ["AGRO BERRY 1"] },
-  { id:"entry",       label:"Entrée",         icon:"◍", color:"#34d399", farms: null },
+  { id:"entry",       label:"Entrée",         icon:"◍", color:"#34d399", farms: ["AGRO BERRY 1"] },
   { id:"transfer",    label:"Transfert",      icon:"⇌", color:"#a78bfa", farms: null },
   { id:"history",     label:"Mouvements",     icon:"◷", color:"#94a3b8", farms: null },
 ];
