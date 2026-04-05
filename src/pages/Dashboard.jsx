@@ -50,7 +50,7 @@ async function saveToGitHub(movements) {
   const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
     method: "PUT",
     headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-    body: JSON.stringify({ message: `[${movement.farm}] ${movement.type}: ${movement.product} ${movement.quantity}${movement.unit}`, content, sha })
+    body: JSON.stringify({ message: `[${mvArray[0].farm}] ${mvArray[0].type}: ${mvArray[0].product} ${mvArray[0].quantity}${mvArray[0].unit}`, content, sha })
   });
   if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
 }
