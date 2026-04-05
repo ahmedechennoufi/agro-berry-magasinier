@@ -148,20 +148,21 @@ export default function Dashboard({ user, userInfo }) {
 
       const mouvementsToSave = [mv];
 
-      // Si c'est une entrée sur AGB2 ou AGB3 → générer automatiquement une sortie magasin sur AGB1
-      if (active === "entry" && (farmName === "AGRO BERRY 2" || farmName === "AGRO BERRY 3")) {
-        const exitAGB1 = {
-          type: "exit",
+      // Si c'est une sortie magasin AGB1 vers AGB2 ou AGB3 → générer automatiquement une entrée sur la ferme destinataire
+      if (active === "exit" && (form.toFarm === "AGRO BERRY 2" || form.toFarm === "AGRO BERRY 3")) {
+        mv.toFarm = form.toFarm;
+        const entryFarm = {
+          type: "entry",
           product: mv.product,
           quantity: mv.quantity,
           unit: mv.unit,
-          farm: "AGRO BERRY 1",
+          farm: form.toFarm,
           date: today,
-          notes: `Sortie auto → ${farmName.replace("AGRO BERRY ", "AGB")}`,
+          notes: `Entrée auto ← Magasin AGB1`,
           saisiepar: user.email,
-          autoFrom: farmName,
+          autoFrom: "AGRO BERRY 1",
         };
-        mouvementsToSave.push(exitAGB1);
+        mouvementsToSave.push(entryFarm);
       }
 
       await saveToGitHub(mouvementsToSave);
@@ -417,7 +418,7 @@ export default function Dashboard({ user, userInfo }) {
           {active !== "history" && active !== "stock" && (
             <div className="page">
               <div className="form-card">
-                {success && <div className="alert success">✓ Enregistré avec succès !{active === "entry" && (farmName === "AGRO BERRY 2" || farmName === "AGRO BERRY 3") ? " · Sortie magasin AGB1 générée automatiquement." : ""}</div>}
+                {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? ` · Entrée créée automatiquement sur ${form.toFarm.replace("AGRO BERRY ","AGB")}.` : ""}</div>}
                 {error && <div className="alert error">✗ {error}</div>}
                 <form onSubmit={handleSubmit}>
                   <div className="form-grid">
@@ -502,6 +503,17 @@ export default function Dashboard({ user, userInfo }) {
                           <option value="">Sélectionner</option>
                           {FARMS.filter(f => f !== farmName).map(f => <option key={f}>{f}</option>)}
                         </select>
+                      </div>
+                    )}
+                    {active === "exit" && (
+                      <div className="form-group full">
+                        <div className="form-label">Ferme destinataire</div>
+                        <select className="form-input" value={form.toFarm} onChange={e => fset("toFarm", e.target.value)}>
+                          <option value="">Sortie externe (pas de ferme)</option>
+                          <option value="AGRO BERRY 2">AGRO BERRY 2</option>
+                          <option value="AGRO BERRY 3">AGRO BERRY 3</option>
+                        </select>
+                        {form.toFarm && <div style={{fontSize:11,color:"#16a34a",marginTop:6,fontWeight:500}}>✓ Une entrée sera créée automatiquement sur {form.toFarm.replace("AGRO BERRY ","AGB")}</div>}
                       </div>
                     )}
                     <div className="form-group full">
