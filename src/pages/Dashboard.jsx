@@ -465,6 +465,29 @@ export default function Dashboard({ user, userInfo }) {
                     <div className="form-group">
                       <div className="form-label">Quantité *</div>
                       <input type="number" className="form-input" value={form.quantity} onChange={e => fset("quantity", e.target.value)} placeholder="0" required min="0" step="0.01" />
+                      {(() => {
+                        const stockItem = farmStock.find(s => s.product === form.product);
+                        const stockQty = stockItem ? stockItem.qty : null;
+                        const qty = parseFloat(form.quantity) || 0;
+                        if (!form.product || stockQty === null) return null;
+                        const remaining = stockQty - qty;
+                        const isOver = qty > stockQty;
+                        return (
+                          <div style={{ marginTop:6, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
+                            <span style={{ color:"#86868b" }}>Stock dispo :</span>
+                            <span style={{ color: isOver ? "#dc2626" : "#16a34a" }}>
+                              {stockQty % 1 === 0 ? stockQty : stockQty.toFixed(2)} {stockItem.unit}
+                            </span>
+                            {qty > 0 && <>
+                              <span style={{ color:"#86868b" }}>→ Reste :</span>
+                              <span style={{ color: isOver ? "#dc2626" : "#16a34a", fontWeight:700 }}>
+                                {remaining % 1 === 0 ? remaining : remaining.toFixed(2)} {stockItem.unit}
+                              </span>
+                              {isOver && <span style={{ color:"#dc2626" }}>⚠ Insuffisant</span>}
+                            </>}
+                          </div>
+                        );
+                      })()}
                     </div>
                     <div className="form-group">
                       <div className="form-label">Unité</div>
