@@ -53,6 +53,23 @@ async function saveToGitHub(movements) {
   if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
 }
 
+async function deleteFromGitHub(mvId) {
+  const { data, sha } = await fetchGitHubData();
+  const before = data.movements.length;
+  data.movements = data.movements.filter(m => m.id !== mvId);
+  if (data.movements.length === before) throw new Error("Mouvement introuvable");
+  // Tracker l'ID supprimé (pour sync avec l'admin)
+  if (!data.deletedMovementIds) data.deletedMovementIds = [];
+  if (!data.deletedMovementIds.includes(mvId)) data.deletedMovementIds.push(mvId);
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+    body: JSON.stringify({ message: `[DELETE] mouvement ${mvId}`, content, sha })
+  });
+  if (!put.ok) throw new Error("Erreur suppression GitHub " + put.status);
+}
+
 function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
   try {
     // Trouver le dernier inventaire physique pour cette ferme
@@ -160,6 +177,7 @@ export default function Dashboard({ user, userInfo }) {
   const [mvDateFrom, setMvDateFrom] = useState("");
   const [mvDateTo, setMvDateTo] = useState("");
   const [mvPage, setMvPage] = useState(1);
+  const [deletingId, setDeletingId] = useState(null);
   const MV_PER_PAGE = 20;
 
   const filteredMv = farmMovements.filter(mv => {
@@ -227,7 +245,26 @@ export default function Dashboard({ user, userInfo }) {
     setLoading(false);
   };
 
-  const activeMenu = MENUS.find(m => m.id === active);
+  const handleDelete = async (mv) => {
+    if (!window.confirm(`Supprimer ce mouvement ?\n${mv.product} — ${mv.type} — ${mv.quantity} ${mv.unit}`)) return;
+    setDeletingId(mv.id);
+    try {
+      await deleteFromGitHub(mv.id);
+      setFarmMovements(prev => prev.filter(m => m.id !== mv.id));
+      setFarmStock(prev => {
+        const updated = [...prev];
+        const idx = updated.findIndex(s => s.product === mv.product);
+        if (idx >= 0) {
+          const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+          const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
+          const delta = (resolvedType === "entry" || resolvedType === "transfer-in") ? -mv.quantity : mv.quantity;
+          updated[idx] = { ...updated[idx], qty: updated[idx].qty + delta };
+        }
+        return updated.filter(s => Math.abs(s.qty) > 0);
+      });
+    } catch(err) { alert("Erreur suppression : " + err.message); }
+    setDeletingId(null);
+  };
   const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🍓" : "🫐";
   const farmShort = farmName.replace("AGRO BERRY ", "AB");
   const now = new Date();
@@ -677,6 +714,12 @@ export default function Dashboard({ user, userInfo }) {
                             {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)}
                           </div>
                           <div style={{fontSize:12,color:"#6e6e73"}}>{detail||"—"}</div>
+                          <button
+                            onClick={() => handleDelete(mv)}
+                            disabled={deletingId === mv.id}
+                            style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px 6px",color:"#dc2626",opacity:deletingId===mv.id?0.4:0.6,transition:"opacity 0.2s",marginLeft:4}}
+                            title="Supprimer"
+                          >{deletingId === mv.id ? "⏳" : "🗑"}</button>
                         </div>
                       );
                     })}
