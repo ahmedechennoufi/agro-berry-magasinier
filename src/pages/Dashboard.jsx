@@ -126,7 +126,8 @@ export default function Dashboard({ user, userInfo }) {
 
   const filteredMv = farmMovements.filter(mv => {
     const matchSearch = !mvSearch || mv.product?.toLowerCase().includes(mvSearch.toLowerCase());
-    const matchFilter = mvFilter === "all" || mv.type === mvFilter;
+    const matchFilter = mvFilter === "all" || mv.type === mvFilter ||
+      (mvFilter === "entry" && mv.type === "exit" && farmName !== "AGRO BERRY 1");
     return matchSearch && matchFilter;
   });
 
@@ -561,8 +562,13 @@ export default function Dashboard({ user, userInfo }) {
                     <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span style={{textAlign:"right"}}>Détail</span>
                   </div>
                   {filteredMv.map((mv, i) => {
-                    const t = TYPE_LABELS[mv.type] || { label: mv.type, color: "#94a3b8", icon: "◷" };
-                    const isPlus = mv.type === "entry" || mv.type === "transfer-in";
+                    // Pour AGB2/AGB3 : les sorties magasin (exit) viennent du magasin centrale → afficher comme Entrée
+                    const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                    const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
+                    const t = isEntryFromMagasin
+                      ? { label: "Entrée magasin", color: "#34d399", icon: "◍" }
+                      : (TYPE_LABELS[mv.type] || { label: mv.type, color: "#94a3b8", icon: "◷" });
+                    const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
                     return (
                       <div key={mv.id || i} className="mv-row">
                         <span className="mv-date">{mv.date}</span>
