@@ -466,24 +466,25 @@ export default function Dashboard({ user, userInfo }) {
                       <div className="form-label">Quantité *</div>
                       <input type="number" className="form-input" value={form.quantity} onChange={e => fset("quantity", e.target.value)} placeholder="0" required min="0" step="0.01" />
                       {(() => {
+                        if (!form.product) return null;
                         const stockItem = farmStock.find(s => s.product === form.product);
-                        const stockQty = stockItem ? stockItem.qty : null;
+                        const stockQty = stockItem ? stockItem.qty : 0;
+                        const unit = stockItem ? stockItem.unit : form.unit;
                         const qty = parseFloat(form.quantity) || 0;
-                        if (!form.product || stockQty === null) return null;
                         const remaining = stockQty - qty;
-                        const isOver = qty > stockQty;
+                        const isOver = qty > 0 && qty > stockQty;
                         return (
-                          <div style={{ marginTop:6, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6 }}>
+                          <div style={{ marginTop:6, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                             <span style={{ color:"#86868b" }}>Stock dispo :</span>
-                            <span style={{ color: isOver ? "#dc2626" : "#16a34a" }}>
-                              {stockQty % 1 === 0 ? stockQty : stockQty.toFixed(2)} {stockItem.unit}
+                            <span style={{ color: stockQty > 0 ? "#16a34a" : "#dc2626" }}>
+                              {stockQty % 1 === 0 ? stockQty : stockQty.toFixed(2)} {unit}
                             </span>
                             {qty > 0 && <>
                               <span style={{ color:"#86868b" }}>→ Reste :</span>
                               <span style={{ color: isOver ? "#dc2626" : "#16a34a", fontWeight:700 }}>
-                                {remaining % 1 === 0 ? remaining : remaining.toFixed(2)} {stockItem.unit}
+                                {remaining % 1 === 0 ? remaining : remaining.toFixed(2)} {unit}
                               </span>
-                              {isOver && <span style={{ color:"#dc2626" }}>⚠ Insuffisant</span>}
+                              {isOver && <span style={{ color:"#dc2626" }}>⚠ Stock insuffisant</span>}
                             </>}
                           </div>
                         );
