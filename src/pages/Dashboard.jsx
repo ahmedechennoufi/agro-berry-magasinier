@@ -23,21 +23,28 @@ const ALL_MENUS = [
   { id:"alerts",      label:"Alertes",      icon:"⚠", color:"#f59e0b", farms: null },
 ];
 
-// Seuils d'alerte basés sur les mélanges (Hors Sol + Sol)
-const SEUILS = {
-  "ACIDE PHOSPHORIQUE":   { horsSol: 32,   sol: 0,    unit: "KG" },
-  "NITRATE DE CALCIUM":   { horsSol: 25,   sol: 0,    unit: "KG" },
-  "ENTEC 21% (NOVATEC SOLUB 21%)": { horsSol: 35, sol: 75, unit: "KG" },
-  "MAP":                  { horsSol: 35,   sol: 75,   unit: "KG" },
-  "SULFATE MAGNESUIM":    { horsSol: 35,   sol: 75,   unit: "KG" },
-  "SULFATE DE POTASSE":   { horsSol: 50,   sol: 100,  unit: "KG" },
-  "UREE":                 { horsSol: 15,   sol: 25,   unit: "KG" },
-  "VITAL CU":             { horsSol: 0.5,  sol: 1.5,  unit: "L"  },
-  "SULFATE DE ZINC":      { horsSol: 0.5,  sol: 1,    unit: "KG" },
-  "NUTREL C":             { horsSol: 5,    sol: 8,    unit: "KG" },
-  "BORTRAC":              { horsSol: 0.1,  sol: 0.1,  unit: "L"  },
-  "FEROXIM":              { horsSol: 0,    sol: 6,    unit: "KG" },
+// Seuils d'alerte basés sur 5 mélanges (Hors Sol + Sol)
+const NB_MELANGES = 5;
+const SEUILS_BASE = {
+  "ACIDE PHOSPHORIQUE":            { horsSol: 32,   sol: 0,    unit: "KG" },
+  "NITRATE DE CALCIUM":            { horsSol: 25,   sol: 0,    unit: "KG" },
+  "ENTEC 21% (NOVATEC SOLUB 21%)": { horsSol: 35,   sol: 75,   unit: "KG" },
+  "MAP":                           { horsSol: 35,   sol: 75,   unit: "KG" },
+  "SULFATE MAGNESUIM":             { horsSol: 35,   sol: 75,   unit: "KG" },
+  "SULFATE DE POTASSE":            { horsSol: 50,   sol: 100,  unit: "KG" },
+  "UREE":                          { horsSol: 15,   sol: 25,   unit: "KG" },
+  "VITAL CU":                      { horsSol: 0.5,  sol: 1.5,  unit: "L"  },
+  "SULFATE DE ZINC":               { horsSol: 0.5,  sol: 1,    unit: "KG" },
+  "NUTREL C":                      { horsSol: 5,    sol: 8,    unit: "KG" },
+  "BORTRAC":                       { horsSol: 0.1,  sol: 0.1,  unit: "L"  },
+  "FEROXIM":                       { horsSol: 0,    sol: 6,    unit: "KG" },
 };
+// Seuils = quantité par mélange × 5
+const SEUILS = Object.fromEntries(
+  Object.entries(SEUILS_BASE).map(([name, s]) => [
+    name, { horsSol: s.horsSol * NB_MELANGES, sol: s.sol * NB_MELANGES, unit: s.unit }
+  ])
+);
 
 const TYPE_LABELS = {
   consumption: { label:"Consommation", color:"#f87171", icon:"◉" },
@@ -889,13 +896,13 @@ export default function Dashboard({ user, userInfo }) {
             {/* Header */}
             <div style={{marginBottom:24}}>
               <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
-              <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Basé sur les quantités des mélanges Hors Sol et Sol</div>
+              <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges de chaque catégorie · Hors Sol + Sol</div>
             </div>
 
             {/* Légende mélanges */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:28}}>
               <div style={{background:"linear-gradient(135deg,#eff6ff,#dbeafe)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                <div style={{fontWeight:700,color:"#1e40af",fontSize:13,marginBottom:12}}>💧 Mélange Hors Sol</div>
+                <div style={{fontWeight:700,color:"#1e40af",fontSize:13,marginBottom:12}}>💧 Mélange Hors Sol × 5</div>
                 {Object.entries(SEUILS).filter(([,s]) => s.horsSol > 0).map(([name, s]) => (
                   <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(59,130,246,0.1)"}}>
                     <span style={{color:"#1e3a8a"}}>{name}</span>
@@ -904,7 +911,7 @@ export default function Dashboard({ user, userInfo }) {
                 ))}
               </div>
               <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                <div style={{fontWeight:700,color:"#15803d",fontSize:13,marginBottom:12}}>🌱 Mélange Sol</div>
+                <div style={{fontWeight:700,color:"#15803d",fontSize:13,marginBottom:12}}>🌱 Mélange Sol × 5</div>
                 {Object.entries(SEUILS).filter(([,s]) => s.sol > 0).map(([name, s]) => (
                   <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(34,197,94,0.1)"}}>
                     <span style={{color:"#14532d"}}>{name}</span>
