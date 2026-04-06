@@ -937,6 +937,20 @@ export default function Dashboard({ user, userInfo }) {
                   <script>window.onload=()=>{window.print()}</script></body></html>`;
                   const w=window.open("","_blank"); w.document.write(html); w.document.close();
                 }}>📄 Export PDF</button>
+                <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  const rows = Object.entries(SEUILS).map(([name, seuil]) => {
+                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                    const seuilMax = Math.max(seuil.horsSol, seuil.sol);
+                    const seuilTotal = seuil.horsSol + seuil.sol;
+                    const statut = qty < seuilMax ? "CRITIQUE" : qty < seuilTotal ? "BAS" : "OK";
+                    return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.horsSol||0, seuil.sol||0, seuilTotal, statut];
+                  }).filter(r => r[6] !== "OK");
+                  exportExcel(
+                    ["Produit","Unité","Stock actuel","Seuil HS ×5","Seuil Sol ×5","Seuil total","Statut"],
+                    rows,
+                    `alertes-${farmName.replace(/ /g,"-")}`
+                  );
+                }}>📊 Export Excel</button>
               </div>
 
               {(() => {
