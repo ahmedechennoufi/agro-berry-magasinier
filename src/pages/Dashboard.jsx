@@ -637,7 +637,7 @@ export default function Dashboard({ user, userInfo }) {
           )}
 
           {/* FORMS */}
-          {active !== "history" && active !== "stock" && (
+          {active !== "history" && active !== "stock" && active !== "alerts" && (
             <div className="page">
               <div className="form-card">
                 {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? ` · Entrée créée automatiquement sur ${form.toFarm.replace("AGRO BERRY ","AGB")}.` : ""}</div>}
@@ -886,98 +886,97 @@ export default function Dashboard({ user, userInfo }) {
               )}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* PAGE ALERTES */}
-      {active === "alerts" && (
-        <div className="main" style={{marginLeft: sidebarOpen ? 240 : 68}}>
-          <div className="page">
-            {/* Header */}
-            <div style={{marginBottom:24}}>
-              <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
-              <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges de chaque catégorie · Hors Sol + Sol</div>
-            </div>
-
-            {/* Légende mélanges */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:28}}>
-              <div style={{background:"linear-gradient(135deg,#eff6ff,#dbeafe)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                <div style={{fontWeight:700,color:"#1e40af",fontSize:13,marginBottom:12}}>💧 Mélange Hors Sol × 5</div>
-                {Object.entries(SEUILS).filter(([,s]) => s.horsSol > 0).map(([name, s]) => (
-                  <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(59,130,246,0.1)"}}>
-                    <span style={{color:"#1e3a8a"}}>{name}</span>
-                    <span style={{fontWeight:700,color:"#1e40af",fontFamily:"monospace"}}>{s.horsSol} {s.unit}</span>
-                  </div>
-                ))}
+          {active === "alerts" && (
+            <div className="page">
+              <div style={{marginBottom:24}}>
+                <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
+                <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges · Hors Sol + Sol</div>
               </div>
-              <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                <div style={{fontWeight:700,color:"#15803d",fontSize:13,marginBottom:12}}>🌱 Mélange Sol × 5</div>
-                {Object.entries(SEUILS).filter(([,s]) => s.sol > 0).map(([name, s]) => (
-                  <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(34,197,94,0.1)"}}>
-                    <span style={{color:"#14532d"}}>{name}</span>
-                    <span style={{fontWeight:700,color:"#15803d",fontFamily:"monospace"}}>{s.sol} {s.unit}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Tableau état stock vs seuils */}
-            <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
-              <div style={{padding:"14px 20px",background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)",display:"grid",gridTemplateColumns:"1fr 80px 100px 100px 120px",gap:8,fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
-                <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil mélange</span><span style={{textAlign:"center"}}>Statut</span>
+              {/* Légende */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}}>
+                <div style={{background:"linear-gradient(135deg,#eff6ff,#dbeafe)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:14,padding:"16px 20px"}}>
+                  <div style={{fontWeight:700,color:"#1e40af",fontSize:13,marginBottom:10}}>💧 Mélange Hors Sol × 5</div>
+                  {Object.entries(SEUILS).filter(([,s]) => s.horsSol > 0).map(([name, s]) => (
+                    <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(59,130,246,0.1)"}}>
+                      <span style={{color:"#1e3a8a"}}>{name}</span>
+                      <span style={{fontWeight:700,color:"#1e40af",fontFamily:"monospace"}}>{s.horsSol} {s.unit}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
+                  <div style={{fontWeight:700,color:"#15803d",fontSize:13,marginBottom:10}}>🌱 Mélange Sol × 5</div>
+                  {Object.entries(SEUILS).filter(([,s]) => s.sol > 0).map(([name, s]) => (
+                    <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(34,197,94,0.1)"}}>
+                      <span style={{color:"#14532d"}}>{name}</span>
+                      <span style={{fontWeight:700,color:"#15803d",fontFamily:"monospace"}}>{s.sol} {s.unit}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              {Object.entries(SEUILS).map(([name, seuil]) => {
-                const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
-                const qty = s ? s.qty : 0;
-                const seuilMax = Math.max(seuil.horsSol, seuil.sol);
-                const seuilTotal = seuil.horsSol + seuil.sol;
-                const pct = seuilMax > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
-                const isCritique = qty < seuilMax;
-                const isBas = qty < seuilTotal && qty >= seuilMax;
-                const isOk = qty >= seuilTotal;
-                const statusColor = isCritique ? "#dc2626" : isBas ? "#d97706" : "#16a34a";
-                const statusBg = isCritique ? "#fff5f5" : isBas ? "#fffbeb" : "#f0fff4";
-                const statusLabel = isCritique ? "🔴 Critique" : isBas ? "🟡 Bas" : "🟢 OK";
-                return (
-                  <div key={name} style={{display:"grid",gridTemplateColumns:"1fr 80px 100px 100px 120px",gap:8,padding:"13px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:isCritique?"rgba(220,38,38,0.03)":isBas?"rgba(251,191,36,0.03)":""}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:500,color:"#1d1d1f"}}>{name}</div>
-                      <div style={{height:4,background:"#f0f0f0",borderRadius:4,marginTop:6,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${pct}%`,background:statusColor,borderRadius:4,transition:"width 0.3s"}}/>
+
+              {/* Tableau */}
+              <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
+                <div style={{padding:"12px 20px",background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)",display:"grid",gridTemplateColumns:"1fr 70px 110px 110px 120px",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
+                  <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span><span style={{textAlign:"center"}}>Statut</span>
+                </div>
+                {Object.entries(SEUILS).map(([name, seuil]) => {
+                  const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
+                  const qty = s ? s.qty : 0;
+                  const seuilMax = Math.max(seuil.horsSol, seuil.sol);
+                  const seuilTotal = seuil.horsSol + seuil.sol;
+                  const pct = seuilTotal > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
+                  const isCritique = qty < seuilMax;
+                  const isBas = qty >= seuilMax && qty < seuilTotal;
+                  const statusColor = isCritique ? "#dc2626" : isBas ? "#d97706" : "#16a34a";
+                  const statusBg = isCritique ? "#fff5f5" : isBas ? "#fffbeb" : "#f0fff4";
+                  const statusLabel = isCritique ? "🔴 Critique" : isBas ? "🟡 Bas" : "🟢 OK";
+                  return (
+                    <div key={name} style={{display:"grid",gridTemplateColumns:"1fr 70px 110px 110px 120px",padding:"12px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:isCritique?"rgba(220,38,38,0.02)":isBas?"rgba(251,191,36,0.02)":""}}>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:500,color:"#1d1d1f"}}>{name}</div>
+                        <div style={{height:4,background:"#f0f0f0",borderRadius:4,marginTop:5,overflow:"hidden"}}>
+                          <div style={{height:"100%",width:`${pct}%`,background:statusColor,borderRadius:4}}/>
+                        </div>
+                      </div>
+                      <div style={{textAlign:"center",fontSize:12,color:"#86868b",fontFamily:"monospace"}}>{seuil.unit}</div>
+                      <div style={{textAlign:"right",fontSize:14,fontWeight:700,color:statusColor,fontFamily:"monospace"}}>
+                        {qty % 1 === 0 ? qty : qty.toFixed(2)}
+                      </div>
+                      <div style={{textAlign:"right",fontSize:11,color:"#86868b",fontFamily:"monospace",lineHeight:1.6}}>
+                        {seuil.horsSol > 0 && <div>HS: {seuil.horsSol}</div>}
+                        {seuil.sol > 0 && <div>Sol: {seuil.sol}</div>}
+                      </div>
+                      <div style={{textAlign:"center"}}>
+                        <span style={{background:statusBg,color:statusColor,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,border:`1px solid ${statusColor}30`}}>{statusLabel}</span>
                       </div>
                     </div>
-                    <div style={{textAlign:"center",fontSize:12,color:"#86868b",fontFamily:"monospace"}}>{seuil.unit}</div>
-                    <div style={{textAlign:"right",fontSize:14,fontWeight:700,color:statusColor,fontFamily:"monospace"}}>
-                      {qty % 1 === 0 ? qty : qty.toFixed(2)}
-                    </div>
-                    <div style={{textAlign:"right",fontSize:12,color:"#86868b",fontFamily:"monospace"}}>
-                      <div>HS: {seuil.horsSol}</div>
-                      {seuil.sol > 0 && <div>Sol: {seuil.sol}</div>}
-                    </div>
-                    <div style={{textAlign:"center"}}>
-                      <span style={{background:statusBg,color:statusColor,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,border:`1px solid ${statusColor}30`}}>{statusLabel}</span>
-                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Résumé critique */}
+              {(() => {
+                const critique = Object.entries(SEUILS).filter(([name,s]) => {
+                  const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                  return qty < Math.max(s.horsSol, s.sol);
+                });
+                return critique.length > 0 ? (
+                  <div style={{marginTop:20,background:"linear-gradient(135deg,#fff5f5,#fee2e2)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:14,padding:"16px 20px"}}>
+                    <div style={{fontWeight:700,color:"#dc2626",fontSize:14,marginBottom:8}}>🔴 {critique.length} produit{critique.length>1?"s":""} critique{critique.length>1?"s":""} — Commander dès que possible !</div>
+                    <div style={{fontSize:13,color:"#b91c1c"}}>{critique.map(([name])=>name).join(" · ")}</div>
+                  </div>
+                ) : (
+                  <div style={{marginTop:20,background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
+                    <div style={{fontWeight:700,color:"#16a34a",fontSize:14}}>🟢 Tous les stocks sont suffisants pour 5 mélanges !</div>
                   </div>
                 );
-              })}
+              })()}
             </div>
+          )}
 
-            {/* Résumé */}
-            {(() => {
-              const critique = Object.entries(SEUILS).filter(([name,s]) => {
-                const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                return qty < Math.max(s.horsSol,s.sol);
-              });
-              return critique.length > 0 && (
-                <div style={{marginTop:20,background:"linear-gradient(135deg,#fff5f5,#fee2e2)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                  <div style={{fontWeight:700,color:"#dc2626",fontSize:14,marginBottom:8}}>🔴 {critique.length} produit{critique.length>1?"s":""} en stock critique — Commander dès que possible !</div>
-                  <div style={{fontSize:13,color:"#b91c1c"}}>{critique.map(([name])=>name).join(" · ")}</div>
-                </div>
-              );
-            })()}
-          </div>
         </div>
-      )}
+      </div>
     </>
   );
 }
