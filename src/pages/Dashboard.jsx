@@ -142,12 +142,13 @@ export default function Dashboard({ user, userInfo }) {
   const [mvSearch, setMvSearch] = useState("");
   const [mvFilter, setMvFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const farmName = userInfo?.farm || "AGRO BERRY 1";
   const farmConfig = FARM_CONFIG[farmName] || FARM_CONFIG["AGRO BERRY 1"];
   const farmKey = farmName === "AGRO BERRY 1" ? "stockAB1" : farmName === "AGRO BERRY 2" ? "stockAB2" : "stockAB3";
   const MENUS = ALL_MENUS.filter(m => !m.farms || m.farms.includes(farmName));
-  const emptyForm = { product:"", quantity:"", unit:"KG", culture:farmConfig.cultures[0], destination:"", supplier:"", price:"", toFarm:"", notes:"" };
+  const emptyForm = { product:"", quantity:"", unit:"KG", culture:farmConfig.cultures[0], destination:"", supplier:"", price:"", toFarm:"", notes:"", date: new Date().toISOString().split("T")[0] };
   const [form, setForm] = useState(emptyForm);
   const fset = (k,v) => setForm(prev => ({ ...prev, [k]: v }));
   const destinations = farmConfig.destinations[form.culture] || [];
@@ -198,7 +199,7 @@ export default function Dashboard({ user, userInfo }) {
   const handleSubmit = async (e) => {
     e.preventDefault(); setLoading(true); setError("");
     try {
-      const today = new Date().toISOString().split("T")[0];
+      const today = form.date || new Date().toISOString().split("T")[0];
       const mv = { type: active === "transfer" ? "transfer-out" : active, product: form.product, quantity: parseFloat(form.quantity), unit: form.unit, farm: farmName, date: today };
       if (active === "consumption") { mv.culture = form.culture; mv.destination = form.destination; }
       if (active === "entry") { if (form.supplier) mv.supplier = form.supplier; if (form.price) mv.price = parseFloat(form.price); }
@@ -465,20 +466,93 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" onClick={loadData}>
                   <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                 </button>
+                <button className="refresh-btn" style={{background:"#dc2626",borderColor:"#dc2626",color:"#fff"}} onClick={() => {
+                  const rows = positiveStock.map(s => `${s.product} | ${s.unit} | ${s.qty%1===0?s.qty:s.qty.toFixed(2)}`).join("\n");
+                  const content = `STOCK ${farmName}\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"─".repeat(50)}\nPRODUIT | UNITÉ | QUANTITÉ\n${"─".repeat(50)}\n${rows}\n${"─".repeat(50)}\nTotal produits : ${positiveStock.length}`;
+                  const blob = new Blob([content], {type:"text/plain"});
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url; a.download = `stock-${farmName.replace(/ /g,"-")}-${new Date().toISOString().split("T")[0]}.txt`;
+                  a.click(); URL.revokeObjectURL(url);
+                }}>📄 Export</button>
               </div>
+              {/* Alerte stock bas */}
+              {!loadingStock && positiveStock.filter(s => s.qty <= 10).length > 0 && (
+                <div style={{background:"linear-gradient(135deg,#fffbeb,#fef3c7)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+                  <span style={{fontSize:18}}>⚠️</span>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>Stock bas détecté</div>
+                    <div style={{fontSize:12,color:"#b45309",marginTop:2}}>
+                      {positiveStock.filter(s => s.qty <= 10).map(s => `${s.product} (${s.qty % 1 === 0 ? s.qty : s.qty.toFixed(2)} ${s.unit})`).join(" · ")}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Modal historique produit */}
+              {selectedProduct && (() => {
+                const productMvs = farmMovements.filter(m => m.product === selectedProduct).sort((a,b) => b.date.localeCompare(a.date));
+                const stockItem = farmStock.find(s => s.product === selectedProduct);
+                return (
+                  <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={() => setSelectedProduct(null)}>
+                    <div style={{background:"#fff",borderRadius:20,width:"100%",maxWidth:600,maxHeight:"80vh",overflow:"hidden",display:"flex",flexDirection:"column",boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={e => e.stopPropagation()}>
+                      <div style={{padding:"20px 24px",borderBottom:"1px solid rgba(0,0,0,0.08)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div>
+                          <div style={{fontSize:16,fontWeight:700,color:"#1d1d1f"}}>{selectedProduct}</div>
+                          <div style={{fontSize:12,color:"#86868b",marginTop:2}}>
+                            Stock actuel : <span style={{color:"#16a34a",fontWeight:700}}>{stockItem ? (stockItem.qty % 1 === 0 ? stockItem.qty : stockItem.qty.toFixed(2)) : 0} {stockItem?.unit||"KG"}</span>
+                            {" · "}{productMvs.length} mouvement{productMvs.length>1?"s":""}
+                          </div>
+                        </div>
+                        <button onClick={() => setSelectedProduct(null)} style={{background:"#f5f5f7",border:"none",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:16,color:"#6e6e73"}}>✕</button>
+                      </div>
+                      <div style={{overflowY:"auto",flex:1}}>
+                        {productMvs.length === 0 ? (
+                          <div style={{textAlign:"center",padding:40,color:"#86868b"}}>Aucun mouvement</div>
+                        ) : productMvs.map((mv,i) => {
+                          const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                          const resolvedType = isEntry ? "entry" : mv.type;
+                          const t = isEntry ? {label:"Entrée magasin",color:"#16a34a",icon:"◍"} : (TYPE_LABELS[mv.type]||{label:mv.type,color:"#94a3b8",icon:"◷"});
+                          const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
+                          return (
+                            <div key={mv.id||i} style={{display:"flex",alignItems:"center",padding:"12px 24px",borderBottom:"1px solid rgba(0,0,0,0.05)",gap:12}}>
+                              <div style={{fontSize:11,color:"#86868b",width:80,fontFamily:"monospace",flexShrink:0}}>{mv.date}</div>
+                              <span style={{background:`${t.color}18`,color:t.color,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20,flexShrink:0}}>{t.icon} {t.label}</span>
+                              <div style={{flex:1,fontSize:12,color:"#6e6e73"}}>{mv.culture?`${mv.culture}${mv.destination?" · "+mv.destination:""}`:mv.toFarm?"→ "+mv.toFarm.replace("AGRO BERRY ","AB"):""}</div>
+                              <div style={{fontWeight:700,fontSize:14,color:isPlus?"#16a34a":"#dc2626",fontFamily:"monospace",flexShrink:0}}>
+                                {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)} {mv.unit}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {loadingStock ? (
                 <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
               ) : (
                 <div className="stock-table">
                   <div className="stock-table-header"><span>Produit</span><span>Unité</span><span style={{textAlign:"right"}}>Quantité</span></div>
                   {positiveStock.length > 0 && <div className="section-title">✓ En stock ({positiveStock.length})</div>}
-                  {positiveStock.map(s => (
-                    <div key={s.product} className="stock-row">
-                      <span className="stock-product">{s.product}</span>
-                      <span className="stock-unit">{s.unit}</span>
-                      <span className="stock-qty pos">{s.qty % 1 === 0 ? s.qty : s.qty.toFixed(2)}</span>
-                    </div>
-                  ))}
+                  {positiveStock.map(s => {
+                    const isLow = s.qty <= 10;
+                    return (
+                      <div key={s.product} className="stock-row" onClick={() => setSelectedProduct(s.product)}
+                        style={{cursor:"pointer", background: isLow ? "rgba(251,191,36,0.06)" : ""}}>
+                        <span className="stock-product" style={{display:"flex",alignItems:"center",gap:8}}>
+                          {isLow && <span style={{fontSize:12}}>⚠️</span>}
+                          {s.product}
+                        </span>
+                        <span className="stock-unit">{s.unit}</span>
+                        <span className="stock-qty" style={{color: isLow ? "#d97706" : "#16a34a", textAlign:"right", fontFamily:"'Space Mono',monospace", fontSize:14, fontWeight:700}}>
+                          {s.qty % 1 === 0 ? s.qty : s.qty.toFixed(2)}
+                        </span>
+                      </div>
+                    );
+                  })}
                   {negativeStock.length > 0 && <div className="section-title">⚠ Négatifs ({negativeStock.length})</div>}
                   {negativeStock.map(s => (
                     <div key={s.product} className="stock-row">
@@ -510,6 +584,10 @@ export default function Dashboard({ user, userInfo }) {
                           </button>
                         ))}
                       </div>
+                    </div>
+                    <div className="form-group full">
+                      <div className="form-label">Date *</div>
+                      <input type="date" className="form-input" value={form.date} onChange={e => fset("date", e.target.value)} required max={new Date().toISOString().split("T")[0]} />
                     </div>
                     <div className="form-group full">
                       <div className="form-label">Produit *</div>
