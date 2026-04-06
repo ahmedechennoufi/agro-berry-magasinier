@@ -459,8 +459,7 @@ export default function Dashboard({ user, userInfo }) {
                     const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                     const qty = s ? s.qty : 0;
                     return qty < (seuil.horsSol + seuil.sol);
-                  }).length;
-                  return count > 0 ? <span className="nav-badge" style={{background:"#dc2626"}}>{count}</span> : null;
+                  }).length;                  return count > 0 ? <span className="nav-badge" style={{background:"#dc2626"}}>{count}</span> : null;
                 })()}
               </button>
             ))}
@@ -914,13 +913,12 @@ export default function Dashboard({ user, userInfo }) {
                   const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
                   const critiques = Object.entries(SEUILS).filter(([name,s]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    return qty < Math.max(s.horsSol,s.sol);
+                    return qty < (s.horsSol + s.sol);
                   });
                   const bas = Object.entries(SEUILS).filter(([name,s]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilMax = Math.max(s.horsSol,s.sol);
                     const seuilTotal = s.horsSol+s.sol;
-                    return qty >= seuilMax && qty < seuilTotal;
+                    return false; // Plus de catégorie "bas" séparée
                   });
                   const makeRows = (items, color) => items.map(([name,seuil]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
@@ -940,9 +938,8 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   const rows = Object.entries(SEUILS).map(([name, seuil]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilMax = Math.max(seuil.horsSol, seuil.sol);
                     const seuilTotal = seuil.horsSol + seuil.sol;
-                    const statut = qty < seuilMax ? "CRITIQUE" : qty < seuilTotal ? "BAS" : "OK";
+                    const statut = qty < seuilTotal ? "CRITIQUE" : "OK";
                     return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.horsSol||0, seuil.sol||0, seuilTotal, statut];
                   }).filter(r => r[6] !== "OK");
                   exportExcel(
@@ -957,15 +954,13 @@ export default function Dashboard({ user, userInfo }) {
                 const all = Object.entries(SEUILS).map(([name, seuil]) => {
                   const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                   const qty = s ? s.qty : 0;
-                  const seuilMax = Math.max(seuil.horsSol, seuil.sol);
+                  // Seuil = 5 mélanges Hors Sol + 5 mélanges Sol (combinés)
                   const seuilTotal = seuil.horsSol + seuil.sol;
                   const pct = seuilTotal > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
-                  const isCritique = qty < seuilMax;
-                  const isBas = qty >= seuilMax && qty < seuilTotal;
-                  return { name, seuil, qty, seuilMax, seuilTotal, pct, isCritique, isBas };
+                  const isCritique = qty < seuilTotal;
+                  return { name, seuil, qty, seuilTotal, pct, isCritique };
                 });
                 const critiques = all.filter(x => x.isCritique);
-                const bas = all.filter(x => x.isBas);
 
                 const renderRow = (item, color, bg) => (
                   <div key={item.name} style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"14px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:bg}}>
@@ -982,58 +977,36 @@ export default function Dashboard({ user, userInfo }) {
                     <div style={{textAlign:"right",fontSize:11,color:"#86868b",lineHeight:1.7}}>
                       {item.seuil.horsSol>0&&<div>HS ×5 : <b>{item.seuil.horsSol}</b></div>}
                       {item.seuil.sol>0&&<div>Sol ×5 : <b>{item.seuil.sol}</b></div>}
+                      <div style={{color:"#1d1d1f",fontWeight:700}}>Total : {item.seuilTotal}</div>
                     </div>
                   </div>
                 );
 
-                if (critiques.length === 0 && bas.length === 0) return (
+                if (critiques.length === 0) return (
                   <div style={{textAlign:"center",padding:"60px 20px"}}>
                     <div style={{fontSize:48,marginBottom:12}}>🟢</div>
                     <div style={{fontSize:18,fontWeight:700,color:"#16a34a"}}>Tous les stocks sont suffisants !</div>
-                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock ≥ 5 mélanges pour tous les produits</div>
+                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock ≥ 5 mélanges Hors Sol + 5 mélanges Sol</div>
                   </div>
                 );
 
                 return (
-                  <>
-                    {critiques.length > 0 && (
-                      <div style={{marginBottom:20}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",background:"linear-gradient(135deg,#fff5f5,#fee2e2)",borderRadius:"14px 14px 0 0",border:"1px solid rgba(220,38,38,0.2)",borderBottom:"none"}}>
-                          <span style={{fontSize:20}}>🔴</span>
-                          <div>
-                            <div style={{fontWeight:700,color:"#dc2626",fontSize:14}}>Produits critiques — Commander d'urgence</div>
-                            <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Stock insuffisant pour 1 mélange</div>
-                          </div>
-                          <span style={{marginLeft:"auto",background:"#dc2626",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{critiques.length}</span>
-                        </div>
-                        <div style={{background:"#fff",border:"1px solid rgba(220,38,38,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fef2f2",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
-                            <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span>
-                          </div>
-                          {critiques.map(item => renderRow(item, "#dc2626", "rgba(220,38,38,0.02)"))}
-                        </div>
-                      </div>
-                    )}
-
-                    {bas.length > 0 && (
+                  <div>
+                    <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",background:"linear-gradient(135deg,#fff5f5,#fee2e2)",borderRadius:"14px 14px 0 0",border:"1px solid rgba(220,38,38,0.2)",borderBottom:"none"}}>
+                      <span style={{fontSize:20}}>🔴</span>
                       <div>
-                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",background:"linear-gradient(135deg,#fffbeb,#fef3c7)",borderRadius:"14px 14px 0 0",border:"1px solid rgba(245,158,11,0.2)",borderBottom:"none"}}>
-                          <span style={{fontSize:20}}>🟡</span>
-                          <div>
-                            <div style={{fontWeight:700,color:"#d97706",fontSize:14}}>Stock bas — Prévoir commande</div>
-                            <div style={{fontSize:12,color:"#b45309",marginTop:2}}>Stock entre 1 et 5 mélanges</div>
-                          </div>
-                          <span style={{marginLeft:"auto",background:"#d97706",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{bas.length}</span>
-                        </div>
-                        <div style={{background:"#fff",border:"1px solid rgba(245,158,11,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
-                          <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fffdf0",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
-                            <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span>
-                          </div>
-                          {bas.map(item => renderRow(item, "#d97706", "rgba(251,191,36,0.02)"))}
-                        </div>
+                        <div style={{fontWeight:700,color:"#dc2626",fontSize:14}}>Produits à commander — Stock insuffisant</div>
+                        <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Stock &lt; 5 mélanges Hors Sol + 5 mélanges Sol</div>
                       </div>
-                    )}
-                  </>
+                      <span style={{marginLeft:"auto",background:"#dc2626",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{critiques.length}</span>
+                    </div>
+                    <div style={{background:"#fff",border:"1px solid rgba(220,38,38,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fef2f2",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
+                        <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (HS+Sol ×5)</span>
+                      </div>
+                      {critiques.map(item => renderRow(item, "#dc2626", "rgba(220,38,38,0.02)"))}
+                    </div>
+                  </div>
                 );
               })()}
             </div>
