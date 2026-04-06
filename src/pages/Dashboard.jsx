@@ -287,6 +287,18 @@ export default function Dashboard({ user, userInfo }) {
     setDeletingId(null);
   };
 
+  const exportExcel = (headers, rows, filename) => {
+    const BOM = "\uFEFF";
+    const csvContent = BOM + [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(";")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${filename}-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const activeMenu = MENUS.find(m => m.id === active);
   const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🫐" : "🫐";
   const farmShort = farmName.replace("AGRO BERRY ", "AB");
@@ -545,6 +557,13 @@ export default function Dashboard({ user, userInfo }) {
                   w.document.write(html);
                   w.document.close();
                 }}>📄 Export PDF</button>
+                <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  exportExcel(
+                    ["Ferme","Produit","Unité","Quantité","Date"],
+                    positiveStock.map(s => [farmName, s.product, s.unit, s.qty%1===0?s.qty:s.qty.toFixed(2), new Date().toISOString().split("T")[0]]),
+                    `stock-${farmName.replace(/ /g,"-")}`
+                  );
+                }}>📊 Export Excel</button>
               </div>
               {/* Alerte stock bas */}
               {!loadingStock && positiveStock.filter(s => s.qty <= 10).length > 0 && (
@@ -805,6 +824,17 @@ export default function Dashboard({ user, userInfo }) {
                   <button className="refresh-btn" style={{marginLeft:"auto"}} onClick={loadData}>
                     <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                   </button>
+                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                    exportExcel(
+                      ["Date","Ferme","Type","Produit","Quantité","Unité","Culture","Destination","Notes"],
+                      filteredMv.map(mv => {
+                        const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                        const type = isEntry ? "Entrée magasin" : mv.type === "consumption" ? "Consommation" : mv.type === "transfer-out" ? "Transfert sortant" : mv.type === "transfer-in" ? "Transfert entrant" : mv.type;
+                        return [mv.date, mv.farm || farmName, type, mv.product, mv.quantity, mv.unit, mv.culture||"", mv.destination||"", mv.notes||""];
+                      }),
+                      `mouvements-${farmName.replace(/ /g,"-")}`
+                    );
+                  }}>📊 Excel</button>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   {[
@@ -888,9 +918,79 @@ export default function Dashboard({ user, userInfo }) {
           )}
           {active === "alerts" && (
             <div className="page">
-              <div style={{marginBottom:24}}>
-                <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
-                <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges · Hors Sol + Sol</div>
+              <div style={{marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
+                  <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges · Hors Sol + Sol</div>
+                </div>
+                <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
+                  const rows = Object.entries(SEUILS).map(([name, seuil]) => {
+                    const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
+                    const qty = s ? s.qty : 0;
+                    const seuilMax = Math.max(seuil.horsSol, seuil.sol);
+                    const seuilTotal = seuil.horsSol + seuil.sol;
+                    const statut = qty < seuilMax ? "🔴 CRITIQUE" : qty < seuilTotal ? "🟡 BAS" : "🟢 OK";
+                    const bgColor = qty < seuilMax ? "#fff5f5" : qty < seuilTotal ? "#fffbeb" : "#f0fff4";
+                    const textColor = qty < seuilMax ? "#dc2626" : qty < seuilTotal ? "#d97706" : "#16a34a";
+                    return `<tr style="background:${bgColor}">
+                      <td>${name}</td>
+                      <td style="text-align:center">${seuil.unit}</td>
+                      <td style="text-align:right;font-weight:700;color:${textColor}">${qty%1===0?qty:qty.toFixed(2)}</td>
+                      <td style="text-align:right;color:#6e6e73">${seuil.horsSol>0?`HS: ${seuil.horsSol}`:""}${seuil.sol>0?` / Sol: ${seuil.sol}`:""}</td>
+                      <td style="text-align:center;font-weight:700;color:${textColor}">${statut}</td>
+                    </tr>`;
+                  }).join("");
+                  const critique = Object.entries(SEUILS).filter(([name,s]) => {
+                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                    return qty < Math.max(s.horsSol,s.sol);
+                  });
+                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alertes Stock ${farmName}</title>
+                  <style>
+                    body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f}
+                    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #f59e0b}
+                    .logo{font-size:26px;font-weight:800;color:#f59e0b}
+                    .subtitle{font-size:12px;color:#86868b;margin-top:4px}
+                    .meta{text-align:right;font-size:12px;color:#86868b}
+                    .meta strong{display:block;font-size:14px;color:#1d1d1f;margin-bottom:2px}
+                    table{width:100%;border-collapse:collapse;margin:16px 0}
+                    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#6e6e73;text-transform:uppercase;letter-spacing:.05em;background:#f5f5f7;border-bottom:2px solid #e5e7eb}
+                    td{padding:10px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}
+                    .critique{margin-top:20px;background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:14px 18px}
+                    .critique h3{color:#dc2626;margin:0 0 8px;font-size:13px}
+                    .critique p{color:#b91c1c;margin:0;font-size:12px}
+                    .ok{margin-top:20px;background:#f0fff4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px}
+                    .ok p{color:#16a34a;margin:0;font-weight:700;font-size:13px}
+                    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#86868b;display:flex;justify-content:space-between}
+                    @media print{body{padding:15px}}
+                  </style></head><body>
+                  <div class="header">
+                    <div>
+                      <div class="logo">⚠ Rapport Alertes Stock</div>
+                      <div class="subtitle">${farmName} · Seuil = 5 mélanges (Hors Sol + Sol)</div>
+                    </div>
+                    <div class="meta"><strong>${date}</strong>Agro Berry Manager</div>
+                  </div>
+                  <table>
+                    <thead><tr>
+                      <th>Produit</th><th style="text-align:center">Unité</th>
+                      <th style="text-align:right">Stock actuel</th>
+                      <th style="text-align:right">Seuil ×5</th>
+                      <th style="text-align:center">Statut</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                  </table>
+                  ${critique.length > 0
+                    ? `<div class="critique"><h3>🔴 ${critique.length} produit${critique.length>1?"s":""} à commander d'urgence</h3><p>${critique.map(([n])=>n).join(" · ")}</p></div>`
+                    : `<div class="ok"><p>🟢 Tous les stocks sont suffisants pour 5 mélanges</p></div>`
+                  }
+                  <div class="footer"><span>Agro Berry Magasinier</span><span>Généré le ${date}</span></div>
+                  <script>window.onload=()=>{window.print()}</script>
+                  </body></html>`;
+                  const w = window.open("","_blank");
+                  w.document.write(html);
+                  w.document.close();
+                }}>📄 Export PDF</button>
               </div>
 
               {/* Légende */}
