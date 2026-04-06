@@ -466,15 +466,53 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" onClick={loadData}>
                   <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                 </button>
-                <button className="refresh-btn" style={{background:"#dc2626",borderColor:"#dc2626",color:"#fff"}} onClick={() => {
-                  const rows = positiveStock.map(s => `${s.product} | ${s.unit} | ${s.qty%1===0?s.qty:s.qty.toFixed(2)}`).join("\n");
-                  const content = `STOCK ${farmName}\nDate : ${new Date().toLocaleDateString("fr-FR")}\n${"─".repeat(50)}\nPRODUIT | UNITÉ | QUANTITÉ\n${"─".repeat(50)}\n${rows}\n${"─".repeat(50)}\nTotal produits : ${positiveStock.length}`;
-                  const blob = new Blob([content], {type:"text/plain"});
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url; a.download = `stock-${farmName.replace(/ /g,"-")}-${new Date().toISOString().split("T")[0]}.txt`;
-                  a.click(); URL.revokeObjectURL(url);
-                }}>📄 Export</button>
+                <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  const date = new Date().toLocaleDateString("fr-FR", {day:"2-digit",month:"long",year:"numeric"});
+                  const rows = positiveStock.map(s => `
+                    <tr>
+                      <td>${s.product}</td>
+                      <td style="text-align:center">${s.unit}</td>
+                      <td style="text-align:right;color:#16a34a;font-weight:700">${s.qty%1===0?s.qty:s.qty.toFixed(2)}</td>
+                    </tr>`).join("");
+                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Stock ${farmName}</title>
+                  <style>
+                    body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f}
+                    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:2px solid #16a34a}
+                    .logo{font-size:28px;font-weight:800;color:#16a34a;letter-spacing:-1px}
+                    .subtitle{font-size:13px;color:#86868b;margin-top:4px}
+                    .meta{text-align:right;font-size:12px;color:#86868b}
+                    .meta strong{display:block;font-size:15px;color:#1d1d1f;margin-bottom:4px}
+                    table{width:100%;border-collapse:collapse;margin-top:10px}
+                    thead tr{background:#f0fff4}
+                    th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#6e6e73;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #dcfce7}
+                    td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f0f0f0}
+                    tr:hover td{background:#f9fffe}
+                    .footer{margin-top:30px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#86868b;display:flex;justify-content:space-between}
+                    .badge{display:inline-block;background:#dcfce7;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}
+                    @media print{body{padding:15px}}
+                  </style></head><body>
+                  <div class="header">
+                    <div>
+                      <div class="logo">🫐 Agro Berry</div>
+                      <div class="subtitle">${farmName} — Rapport de stock</div>
+                    </div>
+                    <div class="meta"><strong>${date}</strong>Généré par l'app magasinier</div>
+                  </div>
+                  <div class="badge">${positiveStock.length} produits en stock</div>
+                  <table>
+                    <thead><tr><th>Produit</th><th style="text-align:center">Unité</th><th style="text-align:right">Quantité</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                  </table>
+                  <div class="footer">
+                    <span>Agro Berry Manager — App Magasinier</span>
+                    <span>Total : ${positiveStock.length} produits</span>
+                  </div>
+                  <script>window.onload=()=>{window.print()}</script>
+                  </body></html>`;
+                  const w = window.open("","_blank");
+                  w.document.write(html);
+                  w.document.close();
+                }}>📄 Export PDF</button>
               </div>
               {/* Alerte stock bas */}
               {!loadingStock && positiveStock.filter(s => s.qty <= 10).length > 0 && (
