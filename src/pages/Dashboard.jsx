@@ -565,19 +565,6 @@ export default function Dashboard({ user, userInfo }) {
                   );
                 }}>📊 Export Excel</button>
               </div>
-              {/* Alerte stock bas */}
-              {!loadingStock && positiveStock.filter(s => s.qty <= 10).length > 0 && (
-                <div style={{background:"linear-gradient(135deg,#fffbeb,#fef3c7)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:12,padding:"12px 16px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
-                  <span style={{fontSize:18}}>⚠️</span>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>Stock bas détecté</div>
-                    <div style={{fontSize:12,color:"#b45309",marginTop:2}}>
-                      {positiveStock.filter(s => s.qty <= 10).map(s => `${s.product} (${s.qty % 1 === 0 ? s.qty : s.qty.toFixed(2)} ${s.unit})`).join(" · ")}
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Modal historique produit */}
               {selectedProduct && (() => {
                 const productMvs = farmMovements.filter(m => m.product === selectedProduct).sort((a,b) => b.date.localeCompare(a.date));
