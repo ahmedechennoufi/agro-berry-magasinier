@@ -925,102 +925,35 @@ export default function Dashboard({ user, userInfo }) {
                 </div>
                 <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
-                  const rows = Object.entries(SEUILS).map(([name, seuil]) => {
-                    const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
-                    const qty = s ? s.qty : 0;
-                    const seuilMax = Math.max(seuil.horsSol, seuil.sol);
-                    const seuilTotal = seuil.horsSol + seuil.sol;
-                    const statut = qty < seuilMax ? "🔴 CRITIQUE" : qty < seuilTotal ? "🟡 BAS" : "🟢 OK";
-                    const bgColor = qty < seuilMax ? "#fff5f5" : qty < seuilTotal ? "#fffbeb" : "#f0fff4";
-                    const textColor = qty < seuilMax ? "#dc2626" : qty < seuilTotal ? "#d97706" : "#16a34a";
-                    return `<tr style="background:${bgColor}">
-                      <td>${name}</td>
-                      <td style="text-align:center">${seuil.unit}</td>
-                      <td style="text-align:right;font-weight:700;color:${textColor}">${qty%1===0?qty:qty.toFixed(2)}</td>
-                      <td style="text-align:right;color:#6e6e73">${seuil.horsSol>0?`HS: ${seuil.horsSol}`:""}${seuil.sol>0?` / Sol: ${seuil.sol}`:""}</td>
-                      <td style="text-align:center;font-weight:700;color:${textColor}">${statut}</td>
-                    </tr>`;
-                  }).join("");
-                  const critique = Object.entries(SEUILS).filter(([name,s]) => {
+                  const critiques = Object.entries(SEUILS).filter(([name,s]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
                     return qty < Math.max(s.horsSol,s.sol);
                   });
-                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alertes Stock ${farmName}</title>
-                  <style>
-                    body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f}
-                    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:2px solid #f59e0b}
-                    .logo{font-size:26px;font-weight:800;color:#f59e0b}
-                    .subtitle{font-size:12px;color:#86868b;margin-top:4px}
-                    .meta{text-align:right;font-size:12px;color:#86868b}
-                    .meta strong{display:block;font-size:14px;color:#1d1d1f;margin-bottom:2px}
-                    table{width:100%;border-collapse:collapse;margin:16px 0}
-                    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#6e6e73;text-transform:uppercase;letter-spacing:.05em;background:#f5f5f7;border-bottom:2px solid #e5e7eb}
-                    td{padding:10px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}
-                    .critique{margin-top:20px;background:#fff5f5;border:1px solid #fecaca;border-radius:10px;padding:14px 18px}
-                    .critique h3{color:#dc2626;margin:0 0 8px;font-size:13px}
-                    .critique p{color:#b91c1c;margin:0;font-size:12px}
-                    .ok{margin-top:20px;background:#f0fff4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px}
-                    .ok p{color:#16a34a;margin:0;font-weight:700;font-size:13px}
-                    .footer{margin-top:24px;padding-top:12px;border-top:1px solid #e5e7eb;font-size:10px;color:#86868b;display:flex;justify-content:space-between}
-                    @media print{body{padding:15px}}
-                  </style></head><body>
-                  <div class="header">
-                    <div>
-                      <div class="logo">⚠ Rapport Alertes Stock</div>
-                      <div class="subtitle">${farmName} · Seuil = 5 mélanges (Hors Sol + Sol)</div>
-                    </div>
-                    <div class="meta"><strong>${date}</strong>Agro Berry Manager</div>
-                  </div>
-                  <table>
-                    <thead><tr>
-                      <th>Produit</th><th style="text-align:center">Unité</th>
-                      <th style="text-align:right">Stock actuel</th>
-                      <th style="text-align:right">Seuil ×5</th>
-                      <th style="text-align:center">Statut</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                  </table>
-                  ${critique.length > 0
-                    ? `<div class="critique"><h3>🔴 ${critique.length} produit${critique.length>1?"s":""} à commander d'urgence</h3><p>${critique.map(([n])=>n).join(" · ")}</p></div>`
-                    : `<div class="ok"><p>🟢 Tous les stocks sont suffisants pour 5 mélanges</p></div>`
-                  }
+                  const bas = Object.entries(SEUILS).filter(([name,s]) => {
+                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                    const seuilMax = Math.max(s.horsSol,s.sol);
+                    const seuilTotal = s.horsSol+s.sol;
+                    return qty >= seuilMax && qty < seuilTotal;
+                  });
+                  const makeRows = (items, color) => items.map(([name,seuil]) => {
+                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                    return `<tr><td>${name}</td><td style="text-align:center">${seuil.unit}</td><td style="text-align:right;font-weight:700;color:${color}">${qty%1===0?qty:qty.toFixed(2)}</td><td style="text-align:right;color:#6e6e73">${seuil.horsSol>0?`HS: ${seuil.horsSol}`:""}${seuil.sol>0?` Sol: ${seuil.sol}`:""}</td></tr>`;
+                  }).join("");
+                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alertes ${farmName}</title>
+                  <style>body{font-family:Arial,sans-serif;padding:30px;color:#1d1d1f}.header{display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #f59e0b}.logo{font-size:22px;font-weight:800;color:#f59e0b}h2{font-size:14px;margin:20px 0 8px}table{width:100%;border-collapse:collapse}th{padding:8px 12px;background:#f5f5f7;font-size:10px;text-transform:uppercase;color:#6e6e73;text-align:left;border-bottom:2px solid #e5e7eb}td{padding:8px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}.footer{margin-top:20px;font-size:10px;color:#86868b;display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px}</style>
+                  </head><body>
+                  <div class="header"><div><div class="logo">⚠ Alertes Stock</div><div style="font-size:12px;color:#86868b;margin-top:4px">${farmName} · ${date}</div></div></div>
+                  ${critiques.length>0?`<h2 style="color:#dc2626">🔴 Produits critiques (${critiques.length})</h2><table><thead><tr><th>Produit</th><th>Unité</th><th style="text-align:right">Stock</th><th style="text-align:right">Seuil ×5</th></tr></thead><tbody>${makeRows(critiques,"#dc2626")}</tbody></table>`:""}
+                  ${bas.length>0?`<h2 style="color:#d97706">🟡 Stock bas (${bas.length})</h2><table><thead><tr><th>Produit</th><th>Unité</th><th style="text-align:right">Stock</th><th style="text-align:right">Seuil ×5</th></tr></thead><tbody>${makeRows(bas,"#d97706")}</tbody></table>`:""}
+                  ${critiques.length===0&&bas.length===0?`<p style="color:#16a34a;font-weight:700;margin-top:20px">🟢 Tous les stocks sont suffisants !</p>`:""}
                   <div class="footer"><span>Agro Berry Magasinier</span><span>Généré le ${date}</span></div>
-                  <script>window.onload=()=>{window.print()}</script>
-                  </body></html>`;
-                  const w = window.open("","_blank");
-                  w.document.write(html);
-                  w.document.close();
+                  <script>window.onload=()=>{window.print()}</script></body></html>`;
+                  const w=window.open("","_blank"); w.document.write(html); w.document.close();
                 }}>📄 Export PDF</button>
               </div>
 
-              {/* Légende */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}}>
-                <div style={{background:"linear-gradient(135deg,#eff6ff,#dbeafe)",border:"1px solid rgba(59,130,246,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                  <div style={{fontWeight:700,color:"#1e40af",fontSize:13,marginBottom:10}}>💧 Mélange Hors Sol × 5</div>
-                  {Object.entries(SEUILS).filter(([,s]) => s.horsSol > 0).map(([name, s]) => (
-                    <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(59,130,246,0.1)"}}>
-                      <span style={{color:"#1e3a8a"}}>{name}</span>
-                      <span style={{fontWeight:700,color:"#1e40af",fontFamily:"monospace"}}>{s.horsSol} {s.unit}</span>
-                    </div>
-                  ))}
-                </div>
-                <div style={{background:"linear-gradient(135deg,#f0fdf4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                  <div style={{fontWeight:700,color:"#15803d",fontSize:13,marginBottom:10}}>🌱 Mélange Sol × 5</div>
-                  {Object.entries(SEUILS).filter(([,s]) => s.sol > 0).map(([name, s]) => (
-                    <div key={name} style={{display:"flex",justifyContent:"space-between",fontSize:12,padding:"3px 0",borderBottom:"1px solid rgba(34,197,94,0.1)"}}>
-                      <span style={{color:"#14532d"}}>{name}</span>
-                      <span style={{fontWeight:700,color:"#15803d",fontFamily:"monospace"}}>{s.sol} {s.unit}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tableau */}
-              <div style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
-                <div style={{padding:"12px 20px",background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)",display:"grid",gridTemplateColumns:"1fr 70px 110px 110px 120px",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
-                  <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span><span style={{textAlign:"center"}}>Statut</span>
-                </div>
-                {Object.entries(SEUILS).map(([name, seuil]) => {
+              {(() => {
+                const all = Object.entries(SEUILS).map(([name, seuil]) => {
                   const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                   const qty = s ? s.qty : 0;
                   const seuilMax = Math.max(seuil.horsSol, seuil.sol);
@@ -1028,48 +961,78 @@ export default function Dashboard({ user, userInfo }) {
                   const pct = seuilTotal > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
                   const isCritique = qty < seuilMax;
                   const isBas = qty >= seuilMax && qty < seuilTotal;
-                  const statusColor = isCritique ? "#dc2626" : isBas ? "#d97706" : "#16a34a";
-                  const statusBg = isCritique ? "#fff5f5" : isBas ? "#fffbeb" : "#f0fff4";
-                  const statusLabel = isCritique ? "🔴 Critique" : isBas ? "🟡 Bas" : "🟢 OK";
-                  return (
-                    <div key={name} style={{display:"grid",gridTemplateColumns:"1fr 70px 110px 110px 120px",padding:"12px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:isCritique?"rgba(220,38,38,0.02)":isBas?"rgba(251,191,36,0.02)":""}}>
-                      <div>
-                        <div style={{fontSize:13,fontWeight:500,color:"#1d1d1f"}}>{name}</div>
-                        <div style={{height:4,background:"#f0f0f0",borderRadius:4,marginTop:5,overflow:"hidden"}}>
-                          <div style={{height:"100%",width:`${pct}%`,background:statusColor,borderRadius:4}}/>
-                        </div>
-                      </div>
-                      <div style={{textAlign:"center",fontSize:12,color:"#86868b",fontFamily:"monospace"}}>{seuil.unit}</div>
-                      <div style={{textAlign:"right",fontSize:14,fontWeight:700,color:statusColor,fontFamily:"monospace"}}>
-                        {qty % 1 === 0 ? qty : qty.toFixed(2)}
-                      </div>
-                      <div style={{textAlign:"right",fontSize:11,color:"#86868b",fontFamily:"monospace",lineHeight:1.6}}>
-                        {seuil.horsSol > 0 && <div>HS: {seuil.horsSol}</div>}
-                        {seuil.sol > 0 && <div>Sol: {seuil.sol}</div>}
-                      </div>
-                      <div style={{textAlign:"center"}}>
-                        <span style={{background:statusBg,color:statusColor,fontSize:11,fontWeight:700,padding:"4px 10px",borderRadius:20,border:`1px solid ${statusColor}30`}}>{statusLabel}</span>
+                  return { name, seuil, qty, seuilMax, seuilTotal, pct, isCritique, isBas };
+                });
+                const critiques = all.filter(x => x.isCritique);
+                const bas = all.filter(x => x.isBas);
+
+                const renderRow = (item, color, bg) => (
+                  <div key={item.name} style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"14px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:bg}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600,color:"#1d1d1f"}}>{item.name}</div>
+                      <div style={{height:5,background:"#f0f0f0",borderRadius:4,marginTop:6,overflow:"hidden"}}>
+                        <div style={{height:"100%",width:`${item.pct}%`,background:color,borderRadius:4}}/>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                    <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.seuil.unit}</div>
+                    <div style={{textAlign:"right",fontSize:18,fontWeight:800,color,fontFamily:"monospace"}}>
+                      {item.qty%1===0?item.qty:item.qty.toFixed(2)}
+                    </div>
+                    <div style={{textAlign:"right",fontSize:11,color:"#86868b",lineHeight:1.7}}>
+                      {item.seuil.horsSol>0&&<div>HS ×5 : <b>{item.seuil.horsSol}</b></div>}
+                      {item.seuil.sol>0&&<div>Sol ×5 : <b>{item.seuil.sol}</b></div>}
+                    </div>
+                  </div>
+                );
 
-              {/* Résumé critique */}
-              {(() => {
-                const critique = Object.entries(SEUILS).filter(([name,s]) => {
-                  const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                  return qty < Math.max(s.horsSol, s.sol);
-                });
-                return critique.length > 0 ? (
-                  <div style={{marginTop:20,background:"linear-gradient(135deg,#fff5f5,#fee2e2)",border:"1px solid rgba(220,38,38,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                    <div style={{fontWeight:700,color:"#dc2626",fontSize:14,marginBottom:8}}>🔴 {critique.length} produit{critique.length>1?"s":""} critique{critique.length>1?"s":""} — Commander dès que possible !</div>
-                    <div style={{fontSize:13,color:"#b91c1c"}}>{critique.map(([name])=>name).join(" · ")}</div>
+                if (critiques.length === 0 && bas.length === 0) return (
+                  <div style={{textAlign:"center",padding:"60px 20px"}}>
+                    <div style={{fontSize:48,marginBottom:12}}>🟢</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"#16a34a"}}>Tous les stocks sont suffisants !</div>
+                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock ≥ 5 mélanges pour tous les produits</div>
                   </div>
-                ) : (
-                  <div style={{marginTop:20,background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                    <div style={{fontWeight:700,color:"#16a34a",fontSize:14}}>🟢 Tous les stocks sont suffisants pour 5 mélanges !</div>
-                  </div>
+                );
+
+                return (
+                  <>
+                    {critiques.length > 0 && (
+                      <div style={{marginBottom:20}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",background:"linear-gradient(135deg,#fff5f5,#fee2e2)",borderRadius:"14px 14px 0 0",border:"1px solid rgba(220,38,38,0.2)",borderBottom:"none"}}>
+                          <span style={{fontSize:20}}>🔴</span>
+                          <div>
+                            <div style={{fontWeight:700,color:"#dc2626",fontSize:14}}>Produits critiques — Commander d'urgence</div>
+                            <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Stock insuffisant pour 1 mélange</div>
+                          </div>
+                          <span style={{marginLeft:"auto",background:"#dc2626",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{critiques.length}</span>
+                        </div>
+                        <div style={{background:"#fff",border:"1px solid rgba(220,38,38,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fef2f2",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
+                            <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span>
+                          </div>
+                          {critiques.map(item => renderRow(item, "#dc2626", "rgba(220,38,38,0.02)"))}
+                        </div>
+                      </div>
+                    )}
+
+                    {bas.length > 0 && (
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:10,padding:"12px 20px",background:"linear-gradient(135deg,#fffbeb,#fef3c7)",borderRadius:"14px 14px 0 0",border:"1px solid rgba(245,158,11,0.2)",borderBottom:"none"}}>
+                          <span style={{fontSize:20}}>🟡</span>
+                          <div>
+                            <div style={{fontWeight:700,color:"#d97706",fontSize:14}}>Stock bas — Prévoir commande</div>
+                            <div style={{fontSize:12,color:"#b45309",marginTop:2}}>Stock entre 1 et 5 mélanges</div>
+                          </div>
+                          <span style={{marginLeft:"auto",background:"#d97706",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{bas.length}</span>
+                        </div>
+                        <div style={{background:"#fff",border:"1px solid rgba(245,158,11,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+                          <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fffdf0",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
+                            <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span>
+                          </div>
+                          {bas.map(item => renderRow(item, "#d97706", "rgba(251,191,36,0.02)"))}
+                        </div>
+                      </div>
+                    )}
+                  </>
                 );
               })()}
             </div>
