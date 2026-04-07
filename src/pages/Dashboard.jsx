@@ -26,7 +26,7 @@ const ALL_MENUS = [
 // Seuils d'alerte basés sur 5 mélanges (Hors Sol + Sol)
 const NB_MELANGES = 5;
 const SEUILS_BASE = {
-  "ACIDE PHOSPHORIQUE":            { horsSol: 32,   sol: 0,    unit: "KG" },
+  "ACIDE PHOSPHORIQUE":            { horsSol: 32,   sol: 1.25, unit: "KG" },
   "NITRATE DE CALCIUM":            { horsSol: 25,   sol: 0,    unit: "KG" },
   "ENTEC 21% (NOVATEC SOLUB 21%)": { horsSol: 35,   sol: 75,   unit: "KG" },
   "MAP":                           { horsSol: 35,   sol: 75,   unit: "KG" },
