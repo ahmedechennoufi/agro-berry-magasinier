@@ -987,7 +987,7 @@ export default function Dashboard({ user, userInfo }) {
                                 onChange={e => updateItemLocal(idx, "product", e.target.value.toUpperCase())}
                                 placeholder="Nom du produit..." autoComplete="off" />
                               {item.product.length >= 2 && (
-                                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
+                                <div style={{position:"absolute",bottom: idx === items.length-1 ? "calc(100% + 4px)" : "auto", top: idx === items.length-1 ? "auto" : "calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
                                   {products.length === 0 ? (
                                     <div style={{padding:"10px 14px",fontSize:12,color:"#86868b"}}>Chargement des produits...</div>
                                   ) : products.filter(p => p.name.toUpperCase().includes(item.product)).length === 0 ? (
