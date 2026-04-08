@@ -24,27 +24,52 @@ const ALL_MENUS = [
 ];
 
 // Seuils d'alerte basés sur 5 mélanges (Hors Sol + Sol)
-const NB_MELANGES = 5;
-const SEUILS_BASE = {
-  "ACIDE PHOSPHORIQUE":            { horsSol: 32,   sol: 40,   unit: "KG" },
-  "NITRATE DE CALCIUM":            { horsSol: 25,   sol: 0,    unit: "KG" },
-  "ENTEC 21% (NOVATEC SOLUB 21%)": { horsSol: 35,   sol: 75,   unit: "KG" },
-  "MAP":                           { horsSol: 35,   sol: 75,   unit: "KG" },
-  "SULFATE MAGNESUIM":             { horsSol: 35,   sol: 75,   unit: "KG" },
-  "SULFATE DE POTASSE":            { horsSol: 50,   sol: 100,  unit: "KG" },
-  "UREE":                          { horsSol: 15,   sol: 25,   unit: "KG" },
-  "VITAL CU":                      { horsSol: 0.5,  sol: 1.5,  unit: "L"  },
-  "SULFATE DE ZINC":               { horsSol: 0.5,  sol: 1,    unit: "KG" },
-  "NUTREL C":                      { horsSol: 5,    sol: 8,    unit: "KG" },
-  "BORTRAC":                       { horsSol: 0.1,  sol: 0.1,  unit: "L"  },
-  "FEROXIM":                       { horsSol: 0,    sol: 6,    unit: "KG" },
+// Seuils par ferme × 5 mélanges
+const SEUILS_PAR_FERME = {
+  "AGRO BERRY 1": {
+    "ACIDE PHOSPHORIQUE":            { qty: (32 + 40)   * 5, unit: "KG" },
+    "NITRATE DE CALCIUM":            { qty: 25          * 5, unit: "KG" },
+    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (35 + 75)   * 5, unit: "KG" },
+    "MAP":                           { qty: (35 + 75)   * 5, unit: "KG" },
+    "SULFATE MAGNESUIM":             { qty: (35 + 75)   * 5, unit: "KG" },
+    "SULFATE DE POTASSE":            { qty: (50 + 100)  * 5, unit: "KG" },
+    "UREE":                          { qty: (15 + 25)   * 5, unit: "KG" },
+    "VITAL CU":                      { qty: (0.5 + 1.5) * 5, unit: "L"  },
+    "SULFATE DE ZINC":               { qty: (0.5 + 1)   * 5, unit: "KG" },
+    "NUTREL C":                      { qty: (5 + 8)     * 5, unit: "KG" },
+    "BORTRAC":                       { qty: (0.1 + 0.1) * 5, unit: "L"  },
+    "FEROXIM":                       { qty: 6           * 5, unit: "KG" },
+  },
+  "AGRO BERRY 2": {
+    "ACIDE PHOSPHORIQUE":            { qty: (32 + 40)   * 5, unit: "KG" },
+    "NITRATE DE CALCIUM":            { qty: 25          * 5, unit: "KG" },
+    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (35 + 75)   * 5, unit: "KG" },
+    "MAP":                           { qty: (35 + 75)   * 5, unit: "KG" },
+    "SULFATE MAGNESUIM":             { qty: (35 + 75)   * 5, unit: "KG" },
+    "SULFATE DE POTASSE":            { qty: (50 + 100)  * 5, unit: "KG" },
+    "UREE":                          { qty: (15 + 25)   * 5, unit: "KG" },
+    "VITAL CU":                      { qty: (0.5 + 1.5) * 5, unit: "L"  },
+    "SULFATE DE ZINC":               { qty: (0.5 + 1)   * 5, unit: "KG" },
+    "NUTREL C":                      { qty: (5 + 8)     * 5, unit: "KG" },
+    "BORTRAC":                       { qty: (0.1 + 0.1) * 5, unit: "L"  },
+    "FEROXIM":                       { qty: 6           * 5, unit: "KG" },
+  },
+  "AGRO BERRY 3": {
+    // Uniquement Hors Sol (myrtille hors sol)
+    "ACIDE PHOSPHORIQUE":            { qty: 64  * 5, unit: "KG" },
+    "NITRATE DE CALCIUM":            { qty: 40  * 5, unit: "KG" },
+    "FEROXIM":                       { qty: 10  * 5, unit: "KG" },
+    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: 75  * 5, unit: "KG" },
+    "MAP":                           { qty: 75  * 5, unit: "KG" },
+    "SULFATE MAGNESUIM":             { qty: 75  * 5, unit: "KG" },
+    "SULFATE DE POTASSE":            { qty: 100 * 5, unit: "KG" },
+    "UREE":                          { qty: 35  * 5, unit: "KG" },
+    "VITAL CU":                      { qty: 0.5 * 5, unit: "L"  },
+    "SULFATE DE ZINC":               { qty: 0.5 * 5, unit: "KG" },
+    "NUTREL C":                      { qty: 12  * 5, unit: "KG" },
+    "SOLUBOR":                       { qty: 0.1 * 5, unit: "KG" },
+  },
 };
-// Seuils = quantité par mélange × 5
-const SEUILS = Object.fromEntries(
-  Object.entries(SEUILS_BASE).map(([name, s]) => [
-    name, { horsSol: s.horsSol * NB_MELANGES, sol: s.sol * NB_MELANGES, unit: s.unit }
-  ])
-);
 
 const TYPE_LABELS = {
   consumption: { label:"Consommation", color:"#f87171", icon:"◉" },
@@ -455,10 +480,10 @@ export default function Dashboard({ user, userInfo }) {
                 {m.id === "stock" && farmStock.length > 0 && <span className="nav-badge">{farmStock.length}</span>}
                 {m.id === "history" && farmMovements.length > 0 && <span className="nav-badge">{farmMovements.length}</span>}
                 {m.id === "alerts" && (() => {
-                  const count = Object.entries(SEUILS).filter(([name, seuil]) => {
+                  const count = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name, seuil]) => {
                     const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                     const qty = s ? s.qty : 0;
-                    return qty < (seuil.horsSol + seuil.sol);
+                    return qty < seuil.qty;
                   }).length;                  return count > 0 ? <span className="nav-badge" style={{background:"#dc2626"}}>{count}</span> : null;
                 })()}
               </button>
@@ -911,13 +936,13 @@ export default function Dashboard({ user, userInfo }) {
                 </div>
                 <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
-                  const critiques = Object.entries(SEUILS).filter(([name,s]) => {
+                  const critiques = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name,s]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
                     return qty < (s.horsSol + s.sol);
                   });
-                  const bas = Object.entries(SEUILS).filter(([name,s]) => {
+                  const bas = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name,s]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilTotal = s.horsSol+s.sol;
+                    const seuilTotal = s.qty;
                     return false; // Plus de catégorie "bas" séparée
                   });
                   const makeRows = (items, color) => items.map(([name,seuil]) => {
@@ -936,11 +961,11 @@ export default function Dashboard({ user, userInfo }) {
                   const w=window.open("","_blank"); w.document.write(html); w.document.close();
                 }}>📄 Export PDF</button>
                 <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                  const rows = Object.entries(SEUILS).map(([name, seuil]) => {
+                  const rows = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).map(([name, seuil]) => {
                     const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilTotal = seuil.horsSol + seuil.sol;
-                    const statut = qty < seuilTotal ? "CRITIQUE" : "OK";
-                    return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.horsSol||0, seuil.sol||0, seuilTotal, statut];
+                    const seuilTotal = seuil.qty;
+                    const statut = qty < seuil.qty ? "CRITIQUE" : "OK";
+                    return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.qty, statut];
                   }).filter(r => r[6] !== "OK");
                   exportExcel(
                     ["Produit","Unité","Stock actuel","Seuil HS ×5","Seuil Sol ×5","Seuil total","Statut"],
@@ -951,11 +976,11 @@ export default function Dashboard({ user, userInfo }) {
               </div>
 
               {(() => {
-                const all = Object.entries(SEUILS).map(([name, seuil]) => {
+                const all = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).map(([name, seuil]) => {
                   const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                   const qty = s ? s.qty : 0;
                   // Seuil = 5 mélanges Hors Sol + 5 mélanges Sol (combinés)
-                  const seuilTotal = seuil.horsSol + seuil.sol;
+                  const seuilTotal = seuil.qty;
                   const pct = seuilTotal > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
                   const isCritique = qty < seuilTotal;
                   return { name, seuil, qty, seuilTotal, pct, isCritique };
@@ -975,9 +1000,7 @@ export default function Dashboard({ user, userInfo }) {
                       {item.qty%1===0?item.qty:item.qty.toFixed(2)}
                     </div>
                     <div style={{textAlign:"right",fontSize:11,color:"#86868b",lineHeight:1.7}}>
-                      {item.seuil.horsSol>0&&<div>HS ×5 : <b>{item.seuil.horsSol}</b></div>}
-                      {item.seuil.sol>0&&<div>Sol ×5 : <b>{item.seuil.sol}</b></div>}
-                      <div style={{color:"#1d1d1f",fontWeight:700}}>Total : {item.seuilTotal}</div>
+                      <div style={{color:"#1d1d1f",fontWeight:700}}>Seuil : {item.seuilTotal}</div>
                     </div>
                   </div>
                 );
