@@ -41,18 +41,19 @@ const SEUILS_PAR_FERME = {
     "FEROXIM":                       { qty: 6           * 5, unit: "KG" },
   },
   "AGRO BERRY 2": {
-    "ACIDE PHOSPHORIQUE":            { qty: (32 + 40)   * 5, unit: "KG" },
-    "NITRATE DE CALCIUM":            { qty: 25          * 5, unit: "KG" },
-    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (35 + 75)   * 5, unit: "KG" },
-    "MAP":                           { qty: (35 + 75)   * 5, unit: "KG" },
-    "SULFATE MAGNESUIM":             { qty: (35 + 75)   * 5, unit: "KG" },
-    "SULFATE DE POTASSE":            { qty: (50 + 100)  * 5, unit: "KG" },
-    "UREE":                          { qty: (15 + 25)   * 5, unit: "KG" },
-    "VITAL CU":                      { qty: (0.5 + 1.5) * 5, unit: "L"  },
-    "SULFATE DE ZINC":               { qty: (0.5 + 1)   * 5, unit: "KG" },
-    "NUTREL C":                      { qty: (5 + 8)     * 5, unit: "KG" },
-    "BORTRAC":                       { qty: (0.1 + 0.1) * 5, unit: "L"  },
-    "FEROXIM":                       { qty: 6           * 5, unit: "KG" },
+    // Hors Sol + Sol × 5
+    "ACIDE PHOSPHORIQUE":            { qty: 32          * 5, unit: "KG" },  // Sol seulement
+    "NITRATE DE CALCIUM":            { qty: 35          * 5, unit: "KG" },  // HS seulement
+    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (75 + 50)   * 5, unit: "KG" },
+    "MAP":                           { qty: (50 + 50)   * 5, unit: "KG" },
+    "SULFATE MAGNESUIM":             { qty: (50 + 50)   * 5, unit: "KG" },
+    "SULFATE DE POTASSE":            { qty: (100 + 75)  * 5, unit: "KG" },
+    "UREE":                          { qty: (35 + 20)   * 5, unit: "KG" },
+    "VITAL CU":                      { qty: (0.3 + 0.3) * 5, unit: "L"  },
+    "SULFATE DE ZINC":               { qty: 0.5         * 5, unit: "KG" },  // HS seulement
+    "NUTREL C":                      { qty: (8 + 6)     * 5, unit: "KG" },
+    "SOLUBOR":                       { qty: (0.1 + 0.1) * 5, unit: "KG" },
+    "FEROXIM":                       { qty: (8 + 5)     * 5, unit: "KG" },
   },
   "AGRO BERRY 3": {
     // Uniquement Hors Sol (myrtille hors sol)
