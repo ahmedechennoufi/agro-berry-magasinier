@@ -178,6 +178,8 @@ export default function Dashboard({ user, userInfo }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [melangesConfig, setMelangesConfig] = useState({ horsSol: [], sol: [] });
+  const [melangesSaving, setMelangesSaving] = useState(false);
+  const [melangesSaved, setMelangesSaved] = useState(false);
 
   const farmName = userInfo?.farm || "AGRO BERRY 1";
   const farmConfig = FARM_CONFIG[farmName] || FARM_CONFIG["AGRO BERRY 1"];
@@ -916,9 +918,24 @@ export default function Dashboard({ user, userInfo }) {
           )}
           {active === "melanges" && (
             <div className="page">
-              <div style={{marginBottom:24}}>
-                <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚗ Mélanges</div>
-                <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Configure tes recettes — les seuils d'alerte se calculent automatiquement ×5</div>
+              <div style={{marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
+                <div>
+                  <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚗ Mélanges</div>
+                  <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Configure tes recettes — les seuils d'alerte se calculent automatiquement ×5</div>
+                </div>
+                <button
+                  onClick={async () => {
+                    setMelangesSaving(true);
+                    try {
+                      await saveMelangesConfig(farmName, melangesConfig);
+                      setMelangesSaved(true);
+                      setTimeout(() => setMelangesSaved(false), 3000);
+                    } catch(e) { alert("Erreur sauvegarde : " + e.message); }
+                    setMelangesSaving(false);
+                  }}
+                  style={{background: melangesSaved ? "#16a34a" : "#06b6d4", border:"none", color:"#fff", borderRadius:12, padding:"10px 20px", fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", gap:8}}>
+                  {melangesSaving ? "⏳ Enregistrement..." : melangesSaved ? "✅ Enregistré !" : "💾 Valider et Enregistrer"}
+                </button>
               </div>
 
               {(farmName === "AGRO BERRY 3" ? ["horsSol"] : ["horsSol","sol"]).map(type => {
@@ -936,18 +953,15 @@ export default function Dashboard({ user, userInfo }) {
                 };
                 // Sauvegarde GitHub (appel seulement quand nécessaire)
                 const updateItemSave = (idx, field, val) => {
-                  const updated = updateItemLocal(idx, field, val);
-                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
+                  updateItemLocal(idx, field, val);
                 };
                 const addItem = () => {
                   const updated = { ...melangesConfig, [type]: [...items, { product: "", qty: "", unit: "KG" }] };
                   setMelangesConfig(updated);
-                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
                 const removeItem = (idx) => {
                   const updated = { ...melangesConfig, [type]: items.filter((_,i) => i !== idx) };
                   setMelangesConfig(updated);
-                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
 
                 return (
@@ -971,7 +985,6 @@ export default function Dashboard({ user, userInfo }) {
                             <div style={{position:"relative"}}>
                               <input className="form-input" style={{fontSize:13}} value={item.product}
                                 onChange={e => updateItemLocal(idx, "product", e.target.value.toUpperCase())}
-                                onBlur={() => saveMelangesConfig(farmName, melangesConfig).catch(e=>console.error(e))}
                                 placeholder="Nom du produit..." autoComplete="off" />
                               {item.product.length >= 2 && (
                                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
@@ -994,7 +1007,6 @@ export default function Dashboard({ user, userInfo }) {
                             </div>
                             <input type="number" className="form-input" style={{textAlign:"right",fontSize:13}} value={item.qty}
                               onChange={e => updateItemLocal(idx, "qty", e.target.value)}
-                              onBlur={e => updateItemSave(idx, "qty", e.target.value)}
                               placeholder="0" min="0" step="0.01" />
                             <select className="form-input" style={{fontSize:13}} value={item.unit||"KG"}
                               onChange={e => updateItemSave(idx, "unit", e.target.value)}>
