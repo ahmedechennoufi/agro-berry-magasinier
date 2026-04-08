@@ -654,7 +654,7 @@ export default function Dashboard({ user, userInfo }) {
           )}
 
           {/* FORMS */}
-          {active !== "history" && active !== "stock" && active !== "alerts" && (
+          {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && (
             <div className="page">
               <div className="form-card">
                 {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? ` · Entrée créée automatiquement sur ${form.toFarm.replace("AGRO BERRY ","AGB")}.` : ""}</div>}
@@ -664,7 +664,7 @@ export default function Dashboard({ user, userInfo }) {
                     <div className="form-group full">
                       <div className="form-label">Type de mouvement</div>
                       <div className="type-grid">
-                        {MENUS.filter(m => m.id !== "stock" && m.id !== "history").map(m => (
+                        {MENUS.filter(m => m.id !== "stock" && m.id !== "history" && m.id !== "alerts" && m.id !== "melanges").map(m => (
                           <button key={m.id} type="button" className={`type-btn ${active === m.id ? "active" : ""}`}
                             style={{ color: active === m.id ? m.color : "" }} onClick={() => setActive(m.id)}>
                             <span>{m.icon}</span>{m.label}
@@ -921,7 +921,7 @@ export default function Dashboard({ user, userInfo }) {
                 <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Configure tes recettes — les seuils d'alerte se calculent automatiquement ×5</div>
               </div>
 
-              {["horsSol","sol"].map(type => {
+              {(farmName === "AGRO BERRY 3" ? ["horsSol"] : ["horsSol","sol"]).map(type => {
                 const label = type === "horsSol" ? "💧 Hors Sol" : "🌱 Sol";
                 const color = type === "horsSol" ? "#1e40af" : "#15803d";
                 const bg = type === "horsSol" ? "linear-gradient(135deg,#eff6ff,#dbeafe)" : "linear-gradient(135deg,#f0fdf4,#dcfce7)";
