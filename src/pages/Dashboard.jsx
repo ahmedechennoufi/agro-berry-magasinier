@@ -21,57 +21,36 @@ const ALL_MENUS = [
   { id:"transfer",    label:"Transfert",    icon:"⇌", color:"#a78bfa", farms: null },
   { id:"history",     label:"Mouvements",   icon:"◷", color:"#94a3b8", farms: null },
   { id:"alerts",      label:"Alertes",      icon:"⚠", color:"#f59e0b", farms: null },
+  { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
 ];
 
-// Seuils d'alerte basés sur 5 mélanges (Hors Sol + Sol)
-// Seuils par ferme × 5 mélanges
-const SEUILS_PAR_FERME = {
-  "AGRO BERRY 1": {
-    "ACIDE PHOSPHORIQUE":            { qty: (32 + 40)   * 5, unit: "KG" },
-    "NITRATE DE CALCIUM":            { qty: 25          * 5, unit: "KG" },
-    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (35 + 75)   * 5, unit: "KG" },
-    "MAP":                           { qty: (35 + 75)   * 5, unit: "KG" },
-    "SULFATE MAGNESUIM":             { qty: (35 + 75)   * 5, unit: "KG" },
-    "SULFATE DE POTASSE":            { qty: (50 + 100)  * 5, unit: "KG" },
-    "UREE":                          { qty: (15 + 25)   * 5, unit: "KG" },
-    "VITAL CU":                      { qty: (0.5 + 1.5) * 5, unit: "L"  },
-    "SULFATE DE ZINC":               { qty: (0.5 + 1)   * 5, unit: "KG" },
-    "NUTREL C":                      { qty: (5 + 8)     * 5, unit: "KG" },
-    "BORTRAC":                       { qty: (0.1 + 0.1) * 5, unit: "L"  },
-    "FEROXIM":                       { qty: 6           * 5, unit: "KG" },
-  },
-  "AGRO BERRY 2": {
-    // Hors Sol + Sol × 5
-    "ACIDE PHOSPHORIQUE":            { qty: 32          * 5, unit: "KG" },  // Sol seulement
-    "NITRATE DE CALCIUM":            { qty: 35          * 5, unit: "KG" },  // HS seulement
-    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: (75 + 50)   * 5, unit: "KG" },
-    "MAP":                           { qty: (50 + 50)   * 5, unit: "KG" },
-    "SULFATE MAGNESUIM":             { qty: (50 + 50)   * 5, unit: "KG" },
-    "SULFATE DE POTASSE":            { qty: (100 + 75)  * 5, unit: "KG" },
-    "UREE":                          { qty: (35 + 20)   * 5, unit: "KG" },
-    "VITAL CU":                      { qty: (0.3 + 0.3) * 5, unit: "L"  },
-    "SULFATE DE ZINC":               { qty: 0.5         * 5, unit: "KG" },  // HS seulement
-    "NUTREL C":                      { qty: (8 + 6)     * 5, unit: "KG" },
-    "SOLUBOR":                       { qty: (0.1 + 0.1) * 5, unit: "KG" },
-    "FEROXIM":                       { qty: (8 + 5)     * 5, unit: "KG" },
-  },
-  "AGRO BERRY 3": {
-    // Uniquement Hors Sol (myrtille hors sol)
-    "ACIDE PHOSPHORIQUE":            { qty: 64  * 5, unit: "KG" },
-    "NITRATE DE CALCIUM":            { qty: 40  * 5, unit: "KG" },
-    "FEROXIM":                       { qty: 10  * 5, unit: "KG" },
-    "ENTEC 21% (NOVATEC SOLUB 21%)": { qty: 75  * 5, unit: "KG" },
-    "MAP":                           { qty: 75  * 5, unit: "KG" },
-    "SULFATE MAGNESUIM":             { qty: 75  * 5, unit: "KG" },
-    "SULFATE DE POTASSE":            { qty: 100 * 5, unit: "KG" },
-    "UREE":                          { qty: 35  * 5, unit: "KG" },
-    "VITAL CU":                      { qty: 0.5 * 5, unit: "L"  },
-    "SULFATE DE ZINC":               { qty: 0.5 * 5, unit: "KG" },
-    "NUTREL C":                      { qty: 12  * 5, unit: "KG" },
-    "SOLUBOR":                       { qty: 0.1 * 5, unit: "KG" },
-  },
+// Charger les mélanges configurés depuis localStorage
+const loadMelanges = (farmName) => {
+  try {
+    const key = "melanges_config_" + farmName;
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : { horsSol: [], sol: [] };
+  } catch { return { horsSol: [], sol: [] }; }
 };
 
+const saveMelanges = (farmName, data) => {
+  try {
+    localStorage.setItem("melanges_config_" + farmName, JSON.stringify(data));
+  } catch {}
+};
+
+// Calculer les seuils depuis les mélanges configurés (×5)
+const calcSeuils = (farmName) => {
+  const melanges = loadMelanges(farmName);
+  const seuils = {};
+  const NB = 5;
+  [...melanges.horsSol, ...melanges.sol].forEach(({ product, qty, unit }) => {
+    const key = product.toUpperCase();
+    if (!seuils[key]) seuils[key] = { qty: 0, unit: unit || "KG", product };
+    seuils[key].qty += (parseFloat(qty) || 0) * NB;
+  });
+  return seuils;
+};
 const TYPE_LABELS = {
   consumption: { label:"Consommation", color:"#f87171", icon:"◉" },
   exit: { label:"Sortie magasin", color:"#fbbf24", icon:"◎" },
@@ -193,6 +172,7 @@ export default function Dashboard({ user, userInfo }) {
   const [mvFilter, setMvFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [melangesConfig, setMelangesConfig] = useState(() => loadMelanges(userInfo?.farm || "AGRO BERRY 1"));
 
   const farmName = userInfo?.farm || "AGRO BERRY 1";
   const farmConfig = FARM_CONFIG[farmName] || FARM_CONFIG["AGRO BERRY 1"];
@@ -481,7 +461,7 @@ export default function Dashboard({ user, userInfo }) {
                 {m.id === "stock" && farmStock.length > 0 && <span className="nav-badge">{farmStock.length}</span>}
                 {m.id === "history" && farmMovements.length > 0 && <span className="nav-badge">{farmMovements.length}</span>}
                 {m.id === "alerts" && (() => {
-                  const count = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name, seuil]) => {
+                  const count = Object.entries(calcSeuils(farmName)).filter(([name, seuil]) => {
                     const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                     const qty = s ? s.qty : 0;
                     return qty < seuil.qty;
@@ -928,89 +908,154 @@ export default function Dashboard({ user, userInfo }) {
               )}
             </div>
           )}
+          {active === "melanges" && (
+            <div className="page">
+              <div style={{marginBottom:24}}>
+                <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚗ Mélanges</div>
+                <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Configure tes recettes — les seuils d'alerte se calculent automatiquement ×5</div>
+              </div>
+
+              {["horsSol","sol"].map(type => {
+                const label = type === "horsSol" ? "💧 Hors Sol" : "🌱 Sol";
+                const color = type === "horsSol" ? "#1e40af" : "#15803d";
+                const bg = type === "horsSol" ? "linear-gradient(135deg,#eff6ff,#dbeafe)" : "linear-gradient(135deg,#f0fdf4,#dcfce7)";
+                const border = type === "horsSol" ? "rgba(59,130,246,0.2)" : "rgba(34,197,94,0.2)";
+                const items = melangesConfig[type] || [];
+
+                const updateItem = (idx, field, val) => {
+                  const updated = { ...melangesConfig, [type]: items.map((it, i) => i === idx ? { ...it, [field]: val } : it) };
+                  setMelangesConfig(updated);
+                  saveMelanges(farmName, updated);
+                };
+                const addItem = () => {
+                  const updated = { ...melangesConfig, [type]: [...items, { product: "", qty: "", unit: "KG" }] };
+                  setMelangesConfig(updated);
+                  saveMelanges(farmName, updated);
+                };
+                const removeItem = (idx) => {
+                  const updated = { ...melangesConfig, [type]: items.filter((_,i) => i !== idx) };
+                  setMelangesConfig(updated);
+                  saveMelanges(farmName, updated);
+                };
+
+                return (
+                  <div key={type} style={{marginBottom:24,background:"#fff",border:`1px solid ${border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
+                    <div style={{padding:"14px 20px",background:bg,borderBottom:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                      <div style={{fontWeight:700,color,fontSize:15}}>{label}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontSize:12,color:"#86868b"}}>{items.length} produit{items.length>1?"s":""} · Seuil total ×5 : <b style={{color}}>{items.reduce((s,it) => s + (parseFloat(it.qty)||0)*5, 0).toFixed(1)}</b></span>
+                        <button onClick={addItem} style={{background:color,color:"#fff",border:"none",borderRadius:8,padding:"6px 14px",fontSize:12,fontWeight:600,cursor:"pointer"}}>+ Ajouter</button>
+                      </div>
+                    </div>
+                    {items.length === 0 ? (
+                      <div style={{padding:"30px 20px",textAlign:"center",color:"#86868b",fontSize:13}}>Aucun produit configuré — clique sur "+ Ajouter"</div>
+                    ) : (
+                      <>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 40px",padding:"8px 20px",background:"#f9fafb",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
+                          <span>Produit</span><span style={{textAlign:"right"}}>Qté / mélange</span><span style={{textAlign:"center"}}>Unité</span><span></span>
+                        </div>
+                        {items.map((item, idx) => (
+                          <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 40px",padding:"10px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",gap:8}}>
+                            <div className="product-wrap" style={{position:"relative"}}>
+                              <input className="form-input" style={{fontSize:13}} value={item.product}
+                                onChange={e => updateItem(idx, "product", e.target.value.toUpperCase())}
+                                list={`prod-list-${type}-${idx}`}
+                                placeholder="Nom du produit..." />
+                              <datalist id={`prod-list-${type}-${idx}`}>
+                                {products.map(p => <option key={p.id} value={p.name.toUpperCase()} />)}
+                              </datalist>
+                            </div>
+                            <input type="number" className="form-input" style={{textAlign:"right",fontSize:13}} value={item.qty}
+                              onChange={e => updateItem(idx, "qty", e.target.value)}
+                              placeholder="0" min="0" step="0.01" />
+                            <select className="form-input" style={{fontSize:13}} value={item.unit||"KG"}
+                              onChange={e => updateItem(idx, "unit", e.target.value)}>
+                              <option>KG</option><option>L</option><option>UNITÉ</option>
+                            </select>
+                            <button onClick={() => removeItem(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:18,padding:0}}>✕</button>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+
+              <div style={{background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
+                <div style={{fontWeight:700,color:"#16a34a",fontSize:13,marginBottom:12}}>📊 Aperçu des seuils calculés ×5</div>
+                {Object.entries(calcSeuils(farmName)).length === 0 ? (
+                  <div style={{color:"#86868b",fontSize:13}}>Configure tes mélanges ci-dessus pour voir les seuils</div>
+                ) : (
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
+                    {Object.entries(calcSeuils(farmName)).map(([name, s]) => (
+                      <div key={name} style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"1px solid rgba(34,197,94,0.15)"}}>
+                        <div style={{fontSize:12,fontWeight:600,color:"#1d1d1f",marginBottom:2}}>{name}</div>
+                        <div style={{fontSize:16,fontWeight:800,color:"#16a34a",fontFamily:"monospace"}}>{s.qty % 1 === 0 ? s.qty : s.qty.toFixed(1)} {s.unit}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {active === "alerts" && (
             <div className="page">
-              <div style={{marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{marginBottom:24,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
                 <div>
                   <div style={{fontSize:22,fontWeight:700,color:"#1d1d1f",letterSpacing:"-0.5px"}}>⚠ Alertes Stock</div>
-                  <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges · Hors Sol + Sol</div>
+                  <div style={{fontSize:13,color:"#86868b",marginTop:4}}>Seuil = 5 mélanges · configuré dans Mélanges</div>
                 </div>
-                <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                  const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
-                  const critiques = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name,s]) => {
-                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    return qty < (s.horsSol + s.sol);
-                  });
-                  const bas = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).filter(([name,s]) => {
-                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilTotal = s.qty;
-                    return false; // Plus de catégorie "bas" séparée
-                  });
-                  const makeRows = (items, color) => items.map(([name,seuil]) => {
-                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    return `<tr><td>${name}</td><td style="text-align:center">${seuil.unit}</td><td style="text-align:right;font-weight:700;color:${color}">${qty%1===0?qty:qty.toFixed(2)}</td><td style="text-align:right;color:#6e6e73">${seuil.horsSol>0?`HS: ${seuil.horsSol}`:""}${seuil.sol>0?` Sol: ${seuil.sol}`:""}</td></tr>`;
-                  }).join("");
-                  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Alertes ${farmName}</title>
-                  <style>body{font-family:Arial,sans-serif;padding:30px;color:#1d1d1f}.header{display:flex;justify-content:space-between;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #f59e0b}.logo{font-size:22px;font-weight:800;color:#f59e0b}h2{font-size:14px;margin:20px 0 8px}table{width:100%;border-collapse:collapse}th{padding:8px 12px;background:#f5f5f7;font-size:10px;text-transform:uppercase;color:#6e6e73;text-align:left;border-bottom:2px solid #e5e7eb}td{padding:8px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}.footer{margin-top:20px;font-size:10px;color:#86868b;display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px}</style>
-                  </head><body>
-                  <div class="header"><div><div class="logo">⚠ Alertes Stock</div><div style="font-size:12px;color:#86868b;margin-top:4px">${farmName} · ${date}</div></div></div>
-                  ${critiques.length>0?`<h2 style="color:#dc2626">🔴 Produits critiques (${critiques.length})</h2><table><thead><tr><th>Produit</th><th>Unité</th><th style="text-align:right">Stock</th><th style="text-align:right">Seuil ×5</th></tr></thead><tbody>${makeRows(critiques,"#dc2626")}</tbody></table>`:""}
-                  ${bas.length>0?`<h2 style="color:#d97706">🟡 Stock bas (${bas.length})</h2><table><thead><tr><th>Produit</th><th>Unité</th><th style="text-align:right">Stock</th><th style="text-align:right">Seuil ×5</th></tr></thead><tbody>${makeRows(bas,"#d97706")}</tbody></table>`:""}
-                  ${critiques.length===0&&bas.length===0?`<p style="color:#16a34a;font-weight:700;margin-top:20px">🟢 Tous les stocks sont suffisants !</p>`:""}
-                  <div class="footer"><span>Agro Berry Magasinier</span><span>Généré le ${date}</span></div>
-                  <script>window.onload=()=>{window.print()}</script></body></html>`;
-                  const w=window.open("","_blank"); w.document.write(html); w.document.close();
-                }}>📄 Export PDF</button>
-                <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                  const rows = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).map(([name, seuil]) => {
-                    const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
-                    const seuilTotal = seuil.qty;
-                    const statut = qty < seuil.qty ? "CRITIQUE" : "OK";
-                    return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.qty, statut];
-                  }).filter(r => r[6] !== "OK");
-                  exportExcel(
-                    ["Produit","Unité","Stock actuel","Seuil HS ×5","Seuil Sol ×5","Seuil total","Statut"],
-                    rows,
-                    `alertes-${farmName.replace(/ /g,"-")}`
-                  );
-                }}>📊 Export Excel</button>
+                <div style={{display:"flex",gap:10}}>
+                  <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                    const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
+                    const seuils = calcSeuils(farmName);
+                    const critiques = Object.entries(seuils).filter(([name,s]) => {
+                      const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                      return qty < s.qty;
+                    });
+                    const makeRows = (items) => items.map(([name,seuil]) => {
+                      const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                      return "<tr><td>"+name+"</td><td style='text-align:center'>"+seuil.unit+"</td><td style='text-align:right;font-weight:700;color:#dc2626'>"+(qty%1===0?qty:qty.toFixed(2))+"</td><td style='text-align:right;color:#6e6e73'>"+seuil.qty+"</td></tr>";
+                    }).join("");
+                    const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Alertes "+farmName+"</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#1d1d1f}table{width:100%;border-collapse:collapse}th{padding:8px 12px;background:#f5f5f7;font-size:10px;text-transform:uppercase;color:#6e6e73;text-align:left;border-bottom:2px solid #e5e7eb}td{padding:8px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}.footer{margin-top:20px;font-size:10px;color:#86868b;display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px}</style></head><body><h1 style='color:#f59e0b;font-size:20px;margin-bottom:4px'>Alertes Stock</h1><p style='color:#86868b;font-size:12px;margin-bottom:20px'>"+farmName+" - "+date+"</p>"+(critiques.length>0?"<h3 style='color:#dc2626;margin:16px 0 8px'>Produits a commander ("+critiques.length+")</h3><table><thead><tr><th>Produit</th><th>Unite</th><th style='text-align:right'>Stock actuel</th><th style='text-align:right'>Seuil x5</th></tr></thead><tbody>"+makeRows(critiques)+"</tbody></table>":"<p style='color:#16a34a;font-weight:700'>Tous les stocks sont suffisants !</p>")+"<div class='footer'><span>Agro Berry Magasinier</span><span>"+date+"</span></div><script>window.onload=function(){window.print()}<\/script></body></html>";
+                    const w=window.open("","_blank"); w.document.write(html); w.document.close();
+                  }}>📄 Export PDF</button>
+                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                    const seuils = calcSeuils(farmName);
+                    const rows = Object.entries(seuils).map(([name,seuil]) => {
+                      const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
+                      const statut = qty < seuil.qty ? "CRITIQUE" : "OK";
+                      return [name, seuil.unit, qty%1===0?qty:qty.toFixed(2), seuil.qty, statut];
+                    }).filter(r => r[4] !== "OK");
+                    exportExcel(["Produit","Unite","Stock actuel","Seuil x5","Statut"], rows, "alertes-"+farmName.replace(/ /g,"-"));
+                  }}>📊 Export Excel</button>
+                </div>
               </div>
 
               {(() => {
-                const all = Object.entries(SEUILS_PAR_FERME[farmName] || SEUILS_PAR_FERME["AGRO BERRY 1"]).map(([name, seuil]) => {
-                  const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
-                  const qty = s ? s.qty : 0;
-                  // Seuil = 5 mélanges Hors Sol + 5 mélanges Sol (combinés)
-                  const seuilTotal = seuil.qty;
-                  const pct = seuilTotal > 0 ? Math.min(qty / seuilTotal * 100, 100) : 100;
-                  const isCritique = qty < seuilTotal;
-                  return { name, seuil, qty, seuilTotal, pct, isCritique };
-                });
-                const critiques = all.filter(x => x.isCritique);
-
-                const renderRow = (item, color, bg) => (
-                  <div key={item.name} style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"14px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",background:bg}}>
-                    <div>
-                      <div style={{fontSize:14,fontWeight:600,color:"#1d1d1f"}}>{item.name}</div>
-                      <div style={{height:5,background:"#f0f0f0",borderRadius:4,marginTop:6,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${item.pct}%`,background:color,borderRadius:4}}/>
-                      </div>
-                    </div>
-                    <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.seuil.unit}</div>
-                    <div style={{textAlign:"right",fontSize:18,fontWeight:800,color,fontFamily:"monospace"}}>
-                      {item.qty%1===0?item.qty:item.qty.toFixed(2)}
-                    </div>
-                    <div style={{textAlign:"right",fontSize:11,color:"#86868b",lineHeight:1.7}}>
-                      <div style={{color:"#1d1d1f",fontWeight:700}}>Seuil : {item.seuilTotal}</div>
-                    </div>
+                const seuils = calcSeuils(farmName);
+                if (Object.keys(seuils).length === 0) return (
+                  <div style={{textAlign:"center",padding:"60px 20px"}}>
+                    <div style={{fontSize:48,marginBottom:12}}>⚗</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"#1d1d1f"}}>Aucun mélange configuré</div>
+                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Va dans <b>Mélanges</b> pour configurer tes recettes</div>
+                    <button className="refresh-btn" style={{marginTop:16,background:"#06b6d4",border:"none",color:"#fff",fontWeight:600}} onClick={() => setActive("melanges")}>⚗ Configurer les mélanges</button>
                   </div>
                 );
+                const all = Object.entries(seuils).map(([name, seuil]) => {
+                  const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
+                  const qty = s ? s.qty : 0;
+                  const pct = seuil.qty > 0 ? Math.min(qty / seuil.qty * 100, 100) : 100;
+                  const isCritique = qty < seuil.qty;
+                  return { name, seuil, qty, pct, isCritique };
+                });
+                const critiques = all.filter(x => x.isCritique);
 
                 if (critiques.length === 0) return (
                   <div style={{textAlign:"center",padding:"60px 20px"}}>
                     <div style={{fontSize:48,marginBottom:12}}>🟢</div>
                     <div style={{fontSize:18,fontWeight:700,color:"#16a34a"}}>Tous les stocks sont suffisants !</div>
-                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock ≥ 5 mélanges Hors Sol + 5 mélanges Sol</div>
+                    <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock suffisant pour 5 mélanges pour tous les produits</div>
                   </div>
                 );
 
@@ -1020,22 +1065,37 @@ export default function Dashboard({ user, userInfo }) {
                       <span style={{fontSize:20}}>🔴</span>
                       <div>
                         <div style={{fontWeight:700,color:"#dc2626",fontSize:14}}>Produits à commander — Stock insuffisant</div>
-                        <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Stock &lt; 5 mélanges Hors Sol + 5 mélanges Sol</div>
+                        <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Stock {"<"} 5 mélanges</div>
                       </div>
                       <span style={{marginLeft:"auto",background:"#dc2626",color:"#fff",borderRadius:20,padding:"3px 12px",fontWeight:700,fontSize:13}}>{critiques.length}</span>
                     </div>
                     <div style={{background:"#fff",border:"1px solid rgba(220,38,38,0.15)",borderTop:"none",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"10px 20px",background:"#fef2f2",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".08em"}}>
-                        <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (HS+Sol ×5)</span>
+                        <span>Produit</span><span style={{textAlign:"center"}}>Unité</span><span style={{textAlign:"right"}}>Stock actuel</span><span style={{textAlign:"right"}}>Seuil (×5)</span>
                       </div>
-                      {critiques.map(item => renderRow(item, "#dc2626", "rgba(220,38,38,0.02)"))}
+                      {critiques.map(item => (
+                        <div key={item.name} style={{display:"grid",gridTemplateColumns:"1fr 70px 120px 120px",padding:"14px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center"}}>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:600,color:"#1d1d1f"}}>{item.name}</div>
+                            <div style={{height:5,background:"#f0f0f0",borderRadius:4,marginTop:5,overflow:"hidden"}}>
+                              <div style={{height:"100%",width:item.pct+"%",background:"#dc2626",borderRadius:4}}/>
+                            </div>
+                          </div>
+                          <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.seuil.unit}</div>
+                          <div style={{textAlign:"right",fontSize:18,fontWeight:800,color:"#dc2626",fontFamily:"monospace"}}>
+                            {item.qty%1===0?item.qty:item.qty.toFixed(2)}
+                          </div>
+                          <div style={{textAlign:"right",fontSize:13,fontWeight:700,color:"#86868b",fontFamily:"monospace"}}>
+                            {item.seuil.qty%1===0?item.seuil.qty:item.seuil.qty.toFixed(1)}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
               })()}
             </div>
           )}
-
         </div>
       </div>
     </>
