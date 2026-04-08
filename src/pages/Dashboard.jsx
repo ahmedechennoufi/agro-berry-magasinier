@@ -962,14 +962,22 @@ export default function Dashboard({ user, userInfo }) {
                         </div>
                         {items.map((item, idx) => (
                           <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 40px",padding:"10px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",gap:8}}>
-                            <div className="product-wrap" style={{position:"relative"}}>
+                            <div style={{position:"relative"}}>
                               <input className="form-input" style={{fontSize:13}} value={item.product}
                                 onChange={e => updateItem(idx, "product", e.target.value.toUpperCase())}
-                                list={`prod-list-${type}-${idx}`}
-                                placeholder="Nom du produit..." />
-                              <datalist id={`prod-list-${type}-${idx}`}>
-                                {products.map(p => <option key={p.id} value={p.name.toUpperCase()} />)}
-                              </datalist>
+                                onFocus={e => e.target.setAttribute("data-open","1")}
+                                onBlur={e => setTimeout(() => e.target.removeAttribute("data-open"), 150)}
+                                placeholder="Nom du produit..." autoComplete="off" />
+                              {item.product.length > 0 && (
+                                <div className="product-dropdown" style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300}}>
+                                  {products.filter(p => p.name.toUpperCase().includes(item.product)).slice(0,8).map(p => (
+                                    <div key={p.id} className="product-item" onMouseDown={() => updateItem(idx, "product", p.name.toUpperCase())}>
+                                      <span className="product-name">{p.name.toUpperCase()}</span>
+                                      <span className="product-meta">{p.unit}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                             <input type="number" className="form-input" style={{textAlign:"right",fontSize:13}} value={item.qty}
                               onChange={e => updateItem(idx, "qty", e.target.value)}
