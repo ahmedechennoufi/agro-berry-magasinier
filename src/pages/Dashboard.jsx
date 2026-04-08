@@ -200,9 +200,9 @@ export default function Dashboard({ user, userInfo }) {
 
   useEffect(() => { loadData(); }, [farmName]);
 
-  // Recharger depuis GitHub quand on ouvre l'onglet Mouvements
+  // Recharger depuis GitHub quand on ouvre l'onglet Mouvements ou Mélanges
   useEffect(() => {
-    if (active === "history") loadData();
+    if (active === "history" || active === "melanges") loadData();
   }, [active]);
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
@@ -973,9 +973,13 @@ export default function Dashboard({ user, userInfo }) {
                                 onChange={e => updateItemLocal(idx, "product", e.target.value.toUpperCase())}
                                 onBlur={() => saveMelangesConfig(farmName, melangesConfig).catch(e=>console.error(e))}
                                 placeholder="Nom du produit..." autoComplete="off" />
-                              {item.product.length >= 2 && products.filter(p => p.name.toUpperCase().includes(item.product)).length > 0 && (
+                              {item.product.length >= 2 && (
                                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
-                                  {products.filter(p => p.name.toUpperCase().includes(item.product)).slice(0,8).map(p => (
+                                  {products.length === 0 ? (
+                                    <div style={{padding:"10px 14px",fontSize:12,color:"#86868b"}}>Chargement des produits...</div>
+                                  ) : products.filter(p => p.name.toUpperCase().includes(item.product)).length === 0 ? (
+                                    <div style={{padding:"10px 14px",fontSize:12,color:"#86868b"}}>Aucun produit trouvé</div>
+                                  ) : products.filter(p => p.name.toUpperCase().includes(item.product)).slice(0,8).map(p => (
                                     <div key={p.id}
                                       onMouseDown={e => { e.preventDefault(); updateItemSave(idx, "product", p.name.toUpperCase()); }}
                                       style={{padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",fontSize:13,borderBottom:"1px solid rgba(0,0,0,0.05)"}}
