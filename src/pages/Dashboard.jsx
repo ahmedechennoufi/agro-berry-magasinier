@@ -24,29 +24,21 @@ const ALL_MENUS = [
   { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
 ];
 
-// Charger les mélanges configurés depuis localStorage
-const loadMelanges = (farmName) => {
+// Charger/calculer les mélanges depuis les données GitHub
+const loadMelanges = (githubData, farmName) => {
   try {
-    const key = "melanges_config_" + farmName;
-    const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : { horsSol: [], sol: [] };
+    return githubData?.melangesConfig?.[farmName] || { horsSol: [], sol: [] };
   } catch { return { horsSol: [], sol: [] }; }
 };
 
-const saveMelanges = (farmName, data) => {
-  try {
-    localStorage.setItem("melanges_config_" + farmName, JSON.stringify(data));
-  } catch {}
-};
-
 // Calculer les seuils depuis les mélanges configurés (×5)
-const calcSeuils = (farmName) => {
-  const melanges = loadMelanges(farmName);
+const calcSeuils = (melangesConfig) => {
   const seuils = {};
   const NB = 5;
-  [...melanges.horsSol, ...melanges.sol].forEach(({ product, qty, unit }) => {
+  [...(melangesConfig.horsSol||[]), ...(melangesConfig.sol||[])].forEach(({ product, qty, unit }) => {
+    if (!product) return;
     const key = product.toUpperCase();
-    if (!seuils[key]) seuils[key] = { qty: 0, unit: unit || "KG", product };
+    if (!seuils[key]) seuils[key] = { qty: 0, unit: unit || "KG" };
     seuils[key].qty += (parseFloat(qty) || 0) * NB;
   });
   return seuils;
@@ -66,6 +58,19 @@ async function fetchGitHubData() {
   if (!res.ok) throw new Error("Erreur GitHub " + res.status);
   const f = await res.json();
   return { data: JSON.parse(atob(f.content.replace(/\n/g,""))), sha: f.sha };
+}
+
+async function saveMelangesConfig(farmName, melangesData) {
+  const { data, sha } = await fetchGitHubData();
+  if (!data.melangesConfig) data.melangesConfig = {};
+  data.melangesConfig[farmName] = melangesData;
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+  const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+    method: "PUT",
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+    body: JSON.stringify({ message: `[CONFIG] melanges ${farmName}`, content, sha })
+  });
+  if (!put.ok) throw new Error("Erreur sauvegarde config " + put.status);
 }
 
 async function saveToGitHub(movements) {
@@ -172,7 +177,7 @@ export default function Dashboard({ user, userInfo }) {
   const [mvFilter, setMvFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [melangesConfig, setMelangesConfig] = useState(() => loadMelanges(userInfo?.farm || "AGRO BERRY 1"));
+  const [melangesConfig, setMelangesConfig] = useState({ horsSol: [], sol: [] });
 
   const farmName = userInfo?.farm || "AGRO BERRY 1";
   const farmConfig = FARM_CONFIG[farmName] || FARM_CONFIG["AGRO BERRY 1"];
@@ -189,6 +194,7 @@ export default function Dashboard({ user, userInfo }) {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
+      setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => console.error('GitHub error:', err)).finally(() => setLoadingStock(false));
   };
 
@@ -461,7 +467,7 @@ export default function Dashboard({ user, userInfo }) {
                 {m.id === "stock" && farmStock.length > 0 && <span className="nav-badge">{farmStock.length}</span>}
                 {m.id === "history" && farmMovements.length > 0 && <span className="nav-badge">{farmMovements.length}</span>}
                 {m.id === "alerts" && (() => {
-                  const count = Object.entries(calcSeuils(farmName)).filter(([name, seuil]) => {
+                  const count = Object.entries(calcSeuils(melangesConfig)).filter(([name, seuil]) => {
                     const s = farmStock.find(x => x.product.toUpperCase() === name.toUpperCase());
                     const qty = s ? s.qty : 0;
                     return qty < seuil.qty;
@@ -925,17 +931,17 @@ export default function Dashboard({ user, userInfo }) {
                 const updateItem = (idx, field, val) => {
                   const updated = { ...melangesConfig, [type]: items.map((it, i) => i === idx ? { ...it, [field]: val } : it) };
                   setMelangesConfig(updated);
-                  saveMelanges(farmName, updated);
+                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
                 const addItem = () => {
                   const updated = { ...melangesConfig, [type]: [...items, { product: "", qty: "", unit: "KG" }] };
                   setMelangesConfig(updated);
-                  saveMelanges(farmName, updated);
+                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
                 const removeItem = (idx) => {
                   const updated = { ...melangesConfig, [type]: items.filter((_,i) => i !== idx) };
                   setMelangesConfig(updated);
-                  saveMelanges(farmName, updated);
+                  saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
 
                 return (
@@ -983,11 +989,11 @@ export default function Dashboard({ user, userInfo }) {
 
               <div style={{background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
                 <div style={{fontWeight:700,color:"#16a34a",fontSize:13,marginBottom:12}}>📊 Aperçu des seuils calculés ×5</div>
-                {Object.entries(calcSeuils(farmName)).length === 0 ? (
+                {Object.entries(calcSeuils(melangesConfig)).length === 0 ? (
                   <div style={{color:"#86868b",fontSize:13}}>Configure tes mélanges ci-dessus pour voir les seuils</div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
-                    {Object.entries(calcSeuils(farmName)).map(([name, s]) => (
+                    {Object.entries(calcSeuils(melangesConfig)).map(([name, s]) => (
                       <div key={name} style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"1px solid rgba(34,197,94,0.15)"}}>
                         <div style={{fontSize:12,fontWeight:600,color:"#1d1d1f",marginBottom:2}}>{name}</div>
                         <div style={{fontSize:16,fontWeight:800,color:"#16a34a",fontFamily:"monospace"}}>{s.qty % 1 === 0 ? s.qty : s.qty.toFixed(1)} {s.unit}</div>
@@ -1008,7 +1014,7 @@ export default function Dashboard({ user, userInfo }) {
                 <div style={{display:"flex",gap:10}}>
                   <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                     const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
-                    const seuils = calcSeuils(farmName);
+                    const seuils = calcSeuils(melangesConfig);
                     const critiques = Object.entries(seuils).filter(([name,s]) => {
                       const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
                       return qty < s.qty;
@@ -1021,7 +1027,7 @@ export default function Dashboard({ user, userInfo }) {
                     const w=window.open("","_blank"); w.document.write(html); w.document.close();
                   }}>📄 Export PDF</button>
                   <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                    const seuils = calcSeuils(farmName);
+                    const seuils = calcSeuils(melangesConfig);
                     const rows = Object.entries(seuils).map(([name,seuil]) => {
                       const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
                       const statut = qty < seuil.qty ? "CRITIQUE" : "OK";
@@ -1033,7 +1039,7 @@ export default function Dashboard({ user, userInfo }) {
               </div>
 
               {(() => {
-                const seuils = calcSeuils(farmName);
+                const seuils = calcSeuils(melangesConfig);
                 if (Object.keys(seuils).length === 0) return (
                   <div style={{textAlign:"center",padding:"60px 20px"}}>
                     <div style={{fontSize:48,marginBottom:12}}>⚗</div>
