@@ -965,15 +965,17 @@ export default function Dashboard({ user, userInfo }) {
                             <div style={{position:"relative"}}>
                               <input className="form-input" style={{fontSize:13}} value={item.product}
                                 onChange={e => updateItem(idx, "product", e.target.value.toUpperCase())}
-                                onFocus={e => e.target.setAttribute("data-open","1")}
-                                onBlur={e => setTimeout(() => e.target.removeAttribute("data-open"), 150)}
                                 placeholder="Nom du produit..." autoComplete="off" />
-                              {item.product.length > 0 && (
-                                <div className="product-dropdown" style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:300}}>
+                              {item.product.length >= 2 && products.filter(p => p.name.toUpperCase().includes(item.product)).length > 0 && (
+                                <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
                                   {products.filter(p => p.name.toUpperCase().includes(item.product)).slice(0,8).map(p => (
-                                    <div key={p.id} className="product-item" onMouseDown={() => updateItem(idx, "product", p.name.toUpperCase())}>
-                                      <span className="product-name">{p.name.toUpperCase()}</span>
-                                      <span className="product-meta">{p.unit}</span>
+                                    <div key={p.id}
+                                      onMouseDown={e => { e.preventDefault(); updateItem(idx, "product", p.name.toUpperCase()); }}
+                                      style={{padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",fontSize:13,borderBottom:"1px solid rgba(0,0,0,0.05)"}}
+                                      onMouseEnter={e => e.currentTarget.style.background="#f0fff4"}
+                                      onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                                      <span style={{fontWeight:500,color:"#1d1d1f"}}>{p.name.toUpperCase()}</span>
+                                      <span style={{fontSize:11,color:"#86868b"}}>{p.unit}</span>
                                     </div>
                                   ))}
                                 </div>
