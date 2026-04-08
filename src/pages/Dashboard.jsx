@@ -52,21 +52,19 @@ const TYPE_LABELS = {
 };
 
 async function fetchGitHubData() {
-  // Essayer d'abord avec raw media type (supporte les gros fichiers)
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-    headers: { 
-      Authorization: `Bearer ${GITHUB_TOKEN}`, 
-      Accept: "application/vnd.github.raw+json"
-    }
-  });
-  if (!res.ok) throw new Error("Erreur GitHub " + res.status);
-  
-  // Récupérer le SHA séparément pour l'écriture
+  // Récupérer les métadonnées (sha + download_url)
   const metaRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
     headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json" }
   });
+  if (!metaRes.ok) throw new Error("Erreur GitHub meta " + metaRes.status);
   const meta = await metaRes.json();
-  const data = await res.json();
+  
+  // Lire le contenu via blob SHA (supporte > 1MB)
+  const blobRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/blobs/${meta.sha}`, {
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github.raw+json" }
+  });
+  if (!blobRes.ok) throw new Error("Erreur GitHub blob " + blobRes.status);
+  const data = await blobRes.json();
   return { data, sha: meta.sha };
 }
 
