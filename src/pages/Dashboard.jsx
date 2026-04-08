@@ -52,22 +52,22 @@ const TYPE_LABELS = {
 };
 
 async function fetchGitHubData() {
+  // Essayer d'abord avec raw media type (supporte les gros fichiers)
   const res = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json" }
+    headers: { 
+      Authorization: `Bearer ${GITHUB_TOKEN}`, 
+      Accept: "application/vnd.github.raw+json"
+    }
   });
   if (!res.ok) throw new Error("Erreur GitHub " + res.status);
-  const f = await res.json();
-  // Si le fichier est trop grand (> 1MB), utiliser download_url
-  let data;
-  if (f.encoding === "base64" && f.content) {
-    data = JSON.parse(atob(f.content.replace(/\n/g,"")));
-  } else if (f.download_url) {
-    const raw = await fetch(f.download_url);
-    data = await raw.json();
-  } else {
-    throw new Error("Impossible de lire le fichier GitHub");
-  }
-  return { data, sha: f.sha };
+  
+  // Récupérer le SHA séparément pour l'écriture
+  const metaRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json" }
+  });
+  const meta = await metaRes.json();
+  const data = await res.json();
+  return { data, sha: meta.sha };
 }
 
 async function saveMelangesConfig(farmName, melangesData) {
