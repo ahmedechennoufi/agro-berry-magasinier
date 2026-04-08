@@ -928,9 +928,15 @@ export default function Dashboard({ user, userInfo }) {
                 const border = type === "horsSol" ? "rgba(59,130,246,0.2)" : "rgba(34,197,94,0.2)";
                 const items = melangesConfig[type] || [];
 
-                const updateItem = (idx, field, val) => {
+                // Mise à jour locale seulement (pas de GitHub sur chaque frappe)
+                const updateItemLocal = (idx, field, val) => {
                   const updated = { ...melangesConfig, [type]: items.map((it, i) => i === idx ? { ...it, [field]: val } : it) };
                   setMelangesConfig(updated);
+                  return updated;
+                };
+                // Sauvegarde GitHub (appel seulement quand nécessaire)
+                const updateItemSave = (idx, field, val) => {
+                  const updated = updateItemLocal(idx, field, val);
                   saveMelangesConfig(farmName, updated).catch(e => console.error(e));
                 };
                 const addItem = () => {
@@ -964,13 +970,14 @@ export default function Dashboard({ user, userInfo }) {
                           <div key={idx} style={{display:"grid",gridTemplateColumns:"1fr 100px 80px 40px",padding:"10px 20px",borderBottom:"1px solid rgba(0,0,0,0.05)",alignItems:"center",gap:8}}>
                             <div style={{position:"relative"}}>
                               <input className="form-input" style={{fontSize:13}} value={item.product}
-                                onChange={e => updateItem(idx, "product", e.target.value.toUpperCase())}
+                                onChange={e => updateItemLocal(idx, "product", e.target.value.toUpperCase())}
+                                onBlur={() => saveMelangesConfig(farmName, melangesConfig).catch(e=>console.error(e))}
                                 placeholder="Nom du produit..." autoComplete="off" />
                               {item.product.length >= 2 && products.filter(p => p.name.toUpperCase().includes(item.product)).length > 0 && (
                                 <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#fff",border:"1px solid rgba(0,0,0,0.12)",borderRadius:12,maxHeight:200,overflowY:"auto",zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,0.15)"}}>
                                   {products.filter(p => p.name.toUpperCase().includes(item.product)).slice(0,8).map(p => (
                                     <div key={p.id}
-                                      onMouseDown={e => { e.preventDefault(); updateItem(idx, "product", p.name.toUpperCase()); }}
+                                      onMouseDown={e => { e.preventDefault(); updateItemSave(idx, "product", p.name.toUpperCase()); }}
                                       style={{padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",fontSize:13,borderBottom:"1px solid rgba(0,0,0,0.05)"}}
                                       onMouseEnter={e => e.currentTarget.style.background="#f0fff4"}
                                       onMouseLeave={e => e.currentTarget.style.background="transparent"}>
@@ -982,10 +989,11 @@ export default function Dashboard({ user, userInfo }) {
                               )}
                             </div>
                             <input type="number" className="form-input" style={{textAlign:"right",fontSize:13}} value={item.qty}
-                              onChange={e => updateItem(idx, "qty", e.target.value)}
+                              onChange={e => updateItemLocal(idx, "qty", e.target.value)}
+                              onBlur={e => updateItemSave(idx, "qty", e.target.value)}
                               placeholder="0" min="0" step="0.01" />
                             <select className="form-input" style={{fontSize:13}} value={item.unit||"KG"}
-                              onChange={e => updateItem(idx, "unit", e.target.value)}>
+                              onChange={e => updateItemSave(idx, "unit", e.target.value)}>
                               <option>KG</option><option>L</option><option>UNITÉ</option>
                             </select>
                             <button onClick={() => removeItem(idx)} style={{background:"none",border:"none",color:"#dc2626",cursor:"pointer",fontSize:18,padding:0}}>✕</button>
