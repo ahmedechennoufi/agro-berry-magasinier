@@ -57,7 +57,17 @@ async function fetchGitHubData() {
   });
   if (!res.ok) throw new Error("Erreur GitHub " + res.status);
   const f = await res.json();
-  return { data: JSON.parse(atob(f.content.replace(/\n/g,""))), sha: f.sha };
+  // Si le fichier est trop grand (> 1MB), utiliser download_url
+  let data;
+  if (f.encoding === "base64" && f.content) {
+    data = JSON.parse(atob(f.content.replace(/\n/g,"")));
+  } else if (f.download_url) {
+    const raw = await fetch(f.download_url);
+    data = await raw.json();
+  } else {
+    throw new Error("Impossible de lire le fichier GitHub");
+  }
+  return { data, sha: f.sha };
 }
 
 async function saveMelangesConfig(farmName, melangesData) {
