@@ -945,7 +945,7 @@ export default function Dashboard({ user, userInfo }) {
                 };
 
                 return (
-                  <div key={type} style={{marginBottom:24,background:"#fff",border:`1px solid ${border}`,borderRadius:16,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
+                  <div key={type} style={{marginBottom:24,background:"#fff",border:`1px solid ${border}`,borderRadius:16,overflow:"visible",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
                     <div style={{padding:"14px 20px",background:bg,borderBottom:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                       <div style={{fontWeight:700,color,fontSize:15}}>{label}</div>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
