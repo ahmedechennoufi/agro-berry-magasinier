@@ -931,7 +931,7 @@ export default function Dashboard({ user, userInfo }) {
                     </div>
                   </div>
                   <button type="submit" disabled={loading} className="submit-btn"
-                    style={{ background: `linear-gradient(135deg, ${activeMenu?.color}22, ${activeMenu?.color}44)`, color: activeMenu?.color, border: `1px solid ${activeMenu?.color}44` }}>
+                    style={{ background: "linear-gradient(135deg, "+(activeMenu?.color||"#34C759")+"22, "+(activeMenu?.color||"#34C759")+"44)", color: activeMenu?.color, border: "1px solid "+(activeMenu?.color||"#34C759")+"44" }}>
                     {loading ? <><span className="loading-spin">◈</span> Enregistrement...</> : <><span>{activeMenu?.icon}</span> Enregistrer dans le stock</>}
                   </button>
                 </form>
@@ -1035,7 +1035,7 @@ export default function Dashboard({ user, userInfo }) {
                             <div style={{fontSize:11,color:"#86868b"}}>{mv.unit}</div>
                           </div>
                           <div>
-                            <span className="mv-type" style={{background:`${t.color}18`,color:t.color}}>
+                            <span className="mv-type" style={{background:t.color+"18",color:t.color}}>
                               {t.icon} {t.label}
                             </span>
                           </div>
