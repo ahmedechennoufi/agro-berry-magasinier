@@ -230,11 +230,6 @@ export default function Dashboard({ user, userInfo }) {
 
   useEffect(() => { loadData(); }, [farmName]);
 
-  // Recharger depuis GitHub quand on ouvre l'onglet Mélanges uniquement
-  useEffect(() => {
-    if (active === "melanges") loadData();
-  }, [active]);
-
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
   const filteredStock = farmStock.filter(s => s.product.toLowerCase().includes(stockSearch.toLowerCase()));
   const positiveStock = filteredStock.filter(s => s.qty > 0);
