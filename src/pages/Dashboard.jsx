@@ -224,6 +224,8 @@ export default function Dashboard({ user, userInfo }) {
   const [mvDateTo, setMvDateTo] = useState("");
   const [mvPage, setMvPage] = useState(1);
   const [deletingId, setDeletingId] = useState(null);
+  const [editingMv, setEditingMv] = useState(null); // mouvement en cours d'édition
+  const [editDate, setEditDate] = useState("");
   const MV_PER_PAGE = 20;
 
   const filteredMv = farmMovements.filter(mv => {
@@ -429,6 +431,26 @@ export default function Dashboard({ user, userInfo }) {
     const w = window.open("","_blank");
     w.document.write(html);
     w.document.close();
+  };
+
+  const handleEditDate = async () => {
+    if (!editingMv || !editDate) return;
+    setDeletingId(editingMv.id);
+    try {
+      const { data, sha } = await fetchGitHubData();
+      const idx = data.movements.findIndex(m => m.id === editingMv.id);
+      if (idx >= 0) data.movements[idx] = { ...data.movements[idx], date: editDate };
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `[EDIT] date ${editingMv.product}`, content, sha })
+      });
+      if (!put.ok) throw new Error("Erreur GitHub " + put.status);
+      setFarmMovements(prev => prev.map(m => m.id === editingMv.id ? { ...m, date: editDate } : m));
+      setEditingMv(null);
+    } catch(err) { alert("Erreur : " + err.message); }
+    setDeletingId(null);
   };
 
   const activeMenu = MENUS.find(m => m.id === active);
@@ -1000,12 +1022,37 @@ export default function Dashboard({ user, userInfo }) {
                             {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)}
                           </div>
                           <div style={{fontSize:12,color:"#6e6e73"}}>{detail||"—"}</div>
-                          <button
-                            onClick={() => handleDelete(mv)}
-                            disabled={deletingId === mv.id}
-                            style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px 6px",color:"#dc2626",opacity:deletingId===mv.id?0.4:0.6,transition:"opacity 0.2s",marginLeft:4}}
-                            title="Supprimer"
-                          >{deletingId === mv.id ? "⏳" : "🗑"}</button>
+                          <div style={{display:"flex",gap:4}}>
+                            <button
+                              onClick={() => { setEditingMv(mv); setEditDate(mv.date); }}
+                              style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px 6px",color:"#06b6d4",opacity:0.7,transition:"opacity 0.2s"}}
+                              title="Modifier la date"
+                            >✏️</button>
+                            <button
+                              onClick={() => handleDelete(mv)}
+                              disabled={deletingId === mv.id}
+                              style={{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"2px 6px",color:"#dc2626",opacity:deletingId===mv.id?0.4:0.6,transition:"opacity 0.2s"}}
+                              title="Supprimer"
+                            >{deletingId === mv.id ? "⏳" : "🗑"}</button>
+                          </div>
+
+                          {/* Modal édition date */}
+                          {editingMv?.id === mv.id && (
+                            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={() => setEditingMv(null)}>
+                              <div style={{background:"#fff",borderRadius:16,padding:28,width:340,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={e => e.stopPropagation()}>
+                                <div style={{fontSize:16,fontWeight:700,color:"#1d1d1f",marginBottom:4}}>✏️ Modifier la date</div>
+                                <div style={{fontSize:13,color:"#86868b",marginBottom:20}}>{mv.product} — {mv.quantity} {mv.unit}</div>
+                                <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Nouvelle date</div>
+                                <input type="date" className="form-input" value={editDate} onChange={e => setEditDate(e.target.value)} style={{marginBottom:20}} />
+                                <div style={{display:"flex",gap:10}}>
+                                  <button onClick={() => setEditingMv(null)} style={{flex:1,padding:"11px",background:"#f5f5f7",border:"none",borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer",color:"#6e6e73"}}>Annuler</button>
+                                  <button onClick={handleEditDate} disabled={!!deletingId} style={{flex:1,padding:"11px",background:"#06b6d4",border:"none",borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer",color:"#fff"}}>
+                                    {deletingId ? "⏳..." : "✅ Confirmer"}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
