@@ -1016,6 +1016,7 @@ export default function Dashboard({ user, userInfo }) {
                       <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span>Détail</span>
                     </div>
                     {paginatedMv.map((mv, i) => {
+                      if (!mv || !mv.product) return null;
                       const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
                       const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
                       const t = isEntryFromMagasin
@@ -1040,7 +1041,7 @@ export default function Dashboard({ user, userInfo }) {
                             </span>
                           </div>
                           <div className="mv-qty" style={{color:isPlus?"#16a34a":"#dc2626",textAlign:"right"}}>
-                            {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)}
+                            {isPlus?"+":"-"}{(mv.quantity||0)%1===0?(mv.quantity||0):parseFloat(mv.quantity||0).toFixed(2)}
                           </div>
                           <div style={{fontSize:12,color:"#6e6e73"}}>{detail||"—"}</div>
                           <div style={{display:"flex",gap:4}}>
@@ -1163,8 +1164,8 @@ export default function Dashboard({ user, userInfo }) {
                 };
 
                 return (
-                  <div key={type} style={{marginBottom:24,background:"#fff",border:`1px solid ${border}`,borderRadius:16,overflow:"visible",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
-                    <div style={{padding:"14px 20px",background:bg,borderBottom:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div key={type} style={{marginBottom:24,background:"#fff",border:"1px solid "+border,borderRadius:16,overflow:"visible",boxShadow:"0 1px 6px rgba(0,0,0,0.04)"}}>
+                    <div style={{padding:"14px 20px",background:bg,borderBottom:"1px solid "+border,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                       <div style={{fontWeight:700,color,fontSize:15}}>{label}</div>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
                         <span style={{fontSize:12,color:"#86868b"}}>{items.length} produit{items.length>1?"s":""} · Seuil total ×5 : <b style={{color}}>{items.reduce((s,it) => s + (parseFloat(it.qty)||0)*5, 0).toFixed(1)}</b></span>
