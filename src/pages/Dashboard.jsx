@@ -27,15 +27,13 @@ const ALL_MENUS = [
 // Charger/calculer les mélanges depuis les données GitHub ou localStorage
 const loadMelanges = (githubData, farmName) => {
   try {
-    // Priorité : GitHub → localStorage
     const fromGithub = githubData?.melangesConfig?.[farmName];
     if (fromGithub && (fromGithub.horsSol?.length > 0 || fromGithub.sol?.length > 0)) {
-      // Mettre en cache dans localStorage
       localStorage.setItem("melanges_" + farmName, JSON.stringify(fromGithub));
+      localStorage.setItem("melanges_cache", JSON.stringify(fromGithub));
       return fromGithub;
     }
-    // Fallback localStorage
-    const cached = localStorage.getItem("melanges_" + farmName);
+    const cached = localStorage.getItem("melanges_" + farmName) || localStorage.getItem("melanges_cache");
     if (cached) return JSON.parse(cached);
     return { horsSol: [], sol: [] };
   } catch { return { horsSol: [], sol: [] }; }
@@ -88,7 +86,10 @@ async function fetchGitHubData() {
 
 async function saveMelangesConfig(farmName, melangesData) {
   // Sauvegarder dans localStorage immédiatement
-  try { localStorage.setItem("melanges_" + farmName, JSON.stringify(melangesData)); } catch {}
+  try { 
+    localStorage.setItem("melanges_" + farmName, JSON.stringify(melangesData));
+    localStorage.setItem("melanges_cache", JSON.stringify(melangesData));
+  } catch {}
   // Sauvegarder sur GitHub
   const { data, sha } = await fetchGitHubData();
   if (!data.melangesConfig) data.melangesConfig = {};
@@ -219,10 +220,8 @@ export default function Dashboard({ user, userInfo }) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [melangesConfig, setMelangesConfig] = useState(() => {
-    // Charger depuis localStorage au démarrage (instant, sans attendre GitHub)
     try {
-      const farmNm = JSON.parse(localStorage.getItem("agro_user") || "{}").farm || "";
-      const cached = localStorage.getItem("melanges_" + farmNm);
+      const cached = localStorage.getItem("melanges_cache");
       return cached ? JSON.parse(cached) : { horsSol: [], sol: [] };
     } catch { return { horsSol: [], sol: [] }; }
   });
