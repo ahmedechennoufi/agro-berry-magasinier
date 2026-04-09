@@ -834,7 +834,7 @@ export default function Dashboard({ user, userInfo }) {
                         const unit = stockItem ? stockItem.unit : form.unit;
                         const qty = parseFloat(form.quantity) || 0;
                         const remaining = stockQty - qty;
-                        const isOver = qty > 0 && qty > stockQty;
+                        const isOver = qty > 0 && qty > stockQty + 0.001;
                         return (
                           <div style={{ marginTop:6, fontSize:12, fontWeight:600, display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
                             <span style={{ color:"#86868b" }}>Stock dispo :</span>
