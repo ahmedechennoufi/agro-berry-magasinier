@@ -1004,7 +1004,23 @@ export default function Dashboard({ user, userInfo }) {
                     <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                   </button>
                   <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                    exportMouvementsExcel(filteredMv, farmName);
+                    const BOM = "\uFEFF";
+                    const headers = ["Date","Produit","Unite","Type","Quantite","Detail"];
+                    const rows = filteredMv.map(mv => {
+                      const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                      const type = isEntry ? "Entree magasin" : mv.type === "consumption" ? "Consommation" : mv.type === "transfer-out" ? "Transfert sortant" : mv.type === "transfer-in" ? "Transfert entrant" : mv.type;
+                      const detail = mv.culture ? mv.culture+(mv.destination?" - "+mv.destination:"") : mv.toFarm ? mv.toFarm : mv.autoFrom ? mv.autoFrom : "";
+                      const qty = (isEntry ? "+" : "-") + (mv.quantity||0);
+                      return [mv.date, mv.product, mv.unit||"", type, qty, detail];
+                    });
+                    const csv = BOM + [headers, ...rows].map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(";")).join("\n");
+                    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "mouvements-"+farmName.replace(/ /g,"-")+"-"+new Date().toISOString().split("T")[0]+".csv";
+                    a.click();
+                    URL.revokeObjectURL(url);
                   }}>📊 Excel</button>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
