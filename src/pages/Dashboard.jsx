@@ -439,15 +439,24 @@ export default function Dashboard({ user, userInfo }) {
     try {
       const { data, sha } = await fetchGitHubData();
       const idx = data.movements.findIndex(m => m.id === editingMv.id);
-      if (idx >= 0) data.movements[idx] = { ...data.movements[idx], date: editDate };
+      if (idx >= 0) data.movements[idx] = { 
+        ...data.movements[idx], 
+        date: editDate,
+        product: editingMv.product,
+        quantity: parseFloat(editingMv.quantity) || data.movements[idx].quantity,
+        unit: editingMv.unit || data.movements[idx].unit
+      };
       const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
       const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `[EDIT] date ${editingMv.product}`, content, sha })
+        body: JSON.stringify({ message: `[EDIT] ${editingMv.product}`, content, sha })
       });
       if (!put.ok) throw new Error("Erreur GitHub " + put.status);
-      setFarmMovements(prev => prev.map(m => m.id === editingMv.id ? { ...m, date: editDate } : m));
+      setFarmMovements(prev => prev.map(m => m.id === editingMv.id ? { 
+        ...m, date: editDate, product: editingMv.product, 
+        quantity: parseFloat(editingMv.quantity)||m.quantity, unit: editingMv.unit||m.unit 
+      } : m));
       setEditingMv(null);
     } catch(err) { alert("Erreur : " + err.message); }
     setDeletingId(null);
@@ -1039,11 +1048,31 @@ export default function Dashboard({ user, userInfo }) {
                           {/* Modal édition date */}
                           {editingMv?.id === mv.id && (
                             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={() => setEditingMv(null)}>
-                              <div style={{background:"#fff",borderRadius:16,padding:28,width:340,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={e => e.stopPropagation()}>
-                                <div style={{fontSize:16,fontWeight:700,color:"#1d1d1f",marginBottom:4}}>✏️ Modifier la date</div>
-                                <div style={{fontSize:13,color:"#86868b",marginBottom:20}}>{mv.product} — {mv.quantity} {mv.unit}</div>
-                                <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Nouvelle date</div>
+                              <div style={{background:"#fff",borderRadius:16,padding:28,width:400,boxShadow:"0 20px 60px rgba(0,0,0,0.2)"}} onClick={e => e.stopPropagation()}>
+                                <div style={{fontSize:16,fontWeight:700,color:"#1d1d1f",marginBottom:4}}>✏️ Modifier le mouvement</div>
+                                <div style={{fontSize:13,color:"#86868b",marginBottom:20}}>{mv.type} — {mv.farm || farmName}</div>
+
+                                <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Produit</div>
+                                <input className="form-input" style={{marginBottom:14}} value={editingMv.product}
+                                  onChange={e => setEditingMv(prev => ({...prev, product: e.target.value.toUpperCase()}))} />
+
+                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+                                  <div>
+                                    <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Quantité</div>
+                                    <input type="number" className="form-input" value={editingMv.quantity}
+                                      onChange={e => setEditingMv(prev => ({...prev, quantity: e.target.value}))} min="0" step="0.01" />
+                                  </div>
+                                  <div>
+                                    <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Unité</div>
+                                    <select className="form-input" value={editingMv.unit||"KG"} onChange={e => setEditingMv(prev => ({...prev, unit: e.target.value}))}>
+                                      <option>KG</option><option>L</option><option>UNITÉ</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                <div style={{fontSize:11,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Date</div>
                                 <input type="date" className="form-input" value={editDate} onChange={e => setEditDate(e.target.value)} style={{marginBottom:20}} />
+
                                 <div style={{display:"flex",gap:10}}>
                                   <button onClick={() => setEditingMv(null)} style={{flex:1,padding:"11px",background:"#f5f5f7",border:"none",borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer",color:"#6e6e73"}}>Annuler</button>
                                   <button onClick={handleEditDate} disabled={!!deletingId} style={{flex:1,padding:"11px",background:"#06b6d4",border:"none",borderRadius:10,fontSize:13,fontWeight:600,cursor:"pointer",color:"#fff"}}>
