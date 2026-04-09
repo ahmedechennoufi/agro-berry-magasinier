@@ -51,6 +51,14 @@ const TYPE_LABELS = {
   "transfer-in": { label:"Transfert entrant", color:"#60a5fa", icon:"⇌" },
 };
 
+// Nettoyer les unités corrompues
+const cleanUnit = (u) => {
+  if (!u) return "KG";
+  if (u.startsWith("UNIT")) return "UNITE";
+  return u;
+};
+
+
 async function fetchGitHubData() {
   // Récupérer les métadonnées (sha + download_url)
   const metaRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
@@ -240,7 +248,7 @@ export default function Dashboard({ user, userInfo }) {
   const paginatedMv = filteredMv.slice((mvPage - 1) * MV_PER_PAGE, mvPage * MV_PER_PAGE);
 
   const handleSelectProduct = (p) => {
-    fset("product", p.name); fset("unit", p.unit || "KG");
+    fset("product", p.name); fset("unit", cleanUnit(p.unit));
     setSearch(p.name); setShowDropdown(false);
   };
 
@@ -722,7 +730,7 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   exportExcel(
                     ["Ferme","Produit","Unité","Quantité","Date"],
-                    positiveStock.map(s => [farmName, s.product, s.unit, s.qty%1===0?s.qty:s.qty.toFixed(2), new Date().toISOString().split("T")[0]]),
+                    positiveStock.map(s => [farmName, s.product, cleanUnit(s.unit), s.qty%1===0?s.qty:s.qty.toFixed(2), new Date().toISOString().split("T")[0]]),
                     `stock-${farmName.replace(/ /g,"-")}`
                   );
                 }}>📊 Export Excel</button>
@@ -784,7 +792,7 @@ export default function Dashboard({ user, userInfo }) {
                           {isLow && <span style={{fontSize:12}}>⚠️</span>}
                           {s.product}
                         </span>
-                        <span className="stock-unit">{s.unit}</span>
+                        <span className="stock-unit">{cleanUnit(s.unit)}</span>
                         <span className="stock-qty" style={{color: isLow ? "#d97706" : "#16a34a", textAlign:"right", fontFamily:"'Space Mono',monospace", fontSize:14, fontWeight:700}}>
                           {s.qty % 1 === 0 ? s.qty : s.qty.toFixed(2)}
                         </span>
@@ -795,7 +803,7 @@ export default function Dashboard({ user, userInfo }) {
                   {negativeStock.map(s => (
                     <div key={s.product} className="stock-row">
                       <span className="stock-product">{s.product}</span>
-                      <span className="stock-unit">{s.unit}</span>
+                      <span className="stock-unit">{cleanUnit(s.unit)}</span>
                       <span className="stock-qty neg">{s.qty.toFixed(2)}</span>
                     </div>
                   ))}
@@ -839,7 +847,7 @@ export default function Dashboard({ user, userInfo }) {
                               {filtered.map(p => (
                                 <div key={p.id} className="product-item" onMouseDown={() => handleSelectProduct(p)}>
                                   <span className="product-name">{p.name}</span>
-                                  <span className="product-meta">{p.unit}</span>
+                                  <span className="product-meta">{cleanUnit(p.unit)}</span>
                                 </div>
                               ))}
                               <div className="product-add" onMouseDown={() => { setCustomProduct(true); fset("product",""); setSearch(""); setShowDropdown(false); }}>
@@ -886,7 +894,7 @@ export default function Dashboard({ user, userInfo }) {
                     <div className="form-group">
                       <div className="form-label">Unité</div>
                       {form.product ? (
-                        <div className="form-input" style={{background:"#f5f5f7",color:"#6e6e73",cursor:"not-allowed",display:"flex",alignItems:"center"}}>{form.unit}</div>
+                        <div className="form-input" style={{background:"#f5f5f7",color:"#6e6e73",cursor:"not-allowed",display:"flex",alignItems:"center"}}>{cleanUnit(form.unit)}</div>
                       ) : (
                         <select className="form-input" value={form.unit} onChange={e => fset("unit", e.target.value)}>
                           <option value="KG">KG</option><option value="L">L</option><option value="UNITÉ">UNITÉ</option>
@@ -1192,7 +1200,7 @@ export default function Dashboard({ user, userInfo }) {
                                       onMouseEnter={e => e.currentTarget.style.background="#f0fff4"}
                                       onMouseLeave={e => e.currentTarget.style.background="transparent"}>
                                       <span style={{fontWeight:500,color:"#1d1d1f"}}>{p.name.toUpperCase()}</span>
-                                      <span style={{fontSize:11,color:"#86868b"}}>{p.unit}</span>
+                                      <span style={{fontSize:11,color:"#86868b"}}>{cleanUnit(p.unit)}</span>
                                     </div>
                                   ))}
                                 </div>
@@ -1314,7 +1322,7 @@ export default function Dashboard({ user, userInfo }) {
                               <div style={{height:"100%",width:item.pct+"%",background:"#dc2626",borderRadius:4}}/>
                             </div>
                           </div>
-                          <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.seuil.unit}</div>
+                          <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.cleanUnit(seuil.unit)}</div>
                           <div style={{textAlign:"right",fontSize:18,fontWeight:800,color:"#dc2626",fontFamily:"monospace"}}>
                             {item.qty%1===0?item.qty:item.qty.toFixed(2)}
                           </div>
