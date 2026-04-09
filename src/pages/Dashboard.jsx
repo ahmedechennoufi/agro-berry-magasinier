@@ -1117,9 +1117,9 @@ export default function Dashboard({ user, userInfo }) {
                       else if (mv.toFarm) detail = "→ " + mv.toFarm.replace("AGRO BERRY ","AB");
                       else if (mv.fromFarm) detail = "De " + mv.fromFarm.replace("AGRO BERRY ","AB");
                       else if (mv.autoFrom) detail = "← " + mv.autoFrom.replace("AGRO BERRY ","AB");
-                      // Calcul valeur MAD
+                      // Calcul valeur MAD - prix depuis le mouvement ou fiche produit
                       const productInfo = products.find(p => p.name?.toUpperCase() === mv.product?.toUpperCase());
-                      const prix = productInfo?.price || mv.price || 0;
+                      const prix = parseFloat(mv.price) || parseFloat(productInfo?.price) || 0;
                       const valeur = prix * (parseFloat(mv.quantity) || 0);
                       return (
                         <div key={mv.id || i} className="mv-row" style={{gridTemplateColumns:"110px 1fr 150px 90px 90px 150px"}}>
