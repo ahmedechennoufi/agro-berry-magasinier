@@ -321,6 +321,116 @@ export default function Dashboard({ user, userInfo }) {
     URL.revokeObjectURL(url);
   };
 
+  const exportMouvementsExcel = (mvList, farmNm) => {
+    const date = new Date().toLocaleDateString("fr-FR", {day:"2-digit",month:"long",year:"numeric"});
+    const entries = mvList.filter(m => m.type === "exit" && farmNm !== "AGRO BERRY 1").length;
+    const consos = mvList.filter(m => m.type === "consumption").length;
+    const transfers = mvList.filter(m => m.type === "transfer-out" || m.type === "transfer-in").length;
+
+    const typeLabel = (mv) => {
+      if (mv.type === "exit" && farmNm !== "AGRO BERRY 1") return "Entree magasin";
+      if (mv.type === "consumption") return "Consommation";
+      if (mv.type === "transfer-out") return "Transfert sortant";
+      if (mv.type === "transfer-in") return "Transfert entrant";
+      return mv.type;
+    };
+    const typeColor = (mv) => {
+      if (mv.type === "exit" && farmNm !== "AGRO BERRY 1") return "#16a34a";
+      if (mv.type === "consumption") return "#dc2626";
+      if (mv.type === "transfer-out" || mv.type === "transfer-in") return "#7c3aed";
+      return "#1d1d1f";
+    };
+    const isPlus = (mv) => mv.type === "exit" || mv.type === "transfer-in";
+
+    const rows = mvList.map(mv => `
+      <tr style="border-bottom:1px solid #f0f0f0">
+        <td style="padding:9px 12px;font-size:12px;color:#6e6e73;white-space:nowrap">${mv.date}</td>
+        <td style="padding:9px 12px;font-size:13px;font-weight:600;color:#1d1d1f">${mv.product}</td>
+        <td style="padding:9px 12px;font-size:11px;color:#86868b">${mv.unit||""}</td>
+        <td style="padding:9px 12px">
+          <span style="background:${typeColor(mv)}18;color:${typeColor(mv)};font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;white-space:nowrap">${typeLabel(mv)}</span>
+        </td>
+        <td style="padding:9px 12px;text-align:right;font-size:14px;font-weight:800;color:${isPlus(mv)?"#16a34a":"#dc2626"};font-family:monospace">
+          ${isPlus(mv)?"+":"-"}${mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)}
+        </td>
+        <td style="padding:9px 12px;font-size:12px;color:#6e6e73">
+          ${mv.culture?mv.culture+(mv.destination?" · "+mv.destination:""):mv.toFarm?mv.toFarm.replace("AGRO BERRY ","AB"):mv.autoFrom?"← "+mv.autoFrom.replace("AGRO BERRY ","AB"):"—"}
+        </td>
+      </tr>`).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Mouvements ${farmNm}</title>
+    <style>
+      body{font-family:'Helvetica Neue',Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f;background:#fff}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid #2ecc71}
+      .logo{font-size:26px;font-weight:900;color:#2ecc71;letter-spacing:-1px}
+      .subtitle{font-size:13px;color:#86868b;margin-top:4px}
+      .meta{text-align:right}
+      .meta .farm{font-size:18px;font-weight:700;color:#1d1d1f}
+      .meta .dt{font-size:12px;color:#86868b;margin-top:4px}
+      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:28px}
+      .stat{border-radius:12px;padding:16px 20px}
+      .stat-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+      .stat-value{font-size:28px;font-weight:800}
+      .stat-sub{font-size:11px;margin-top:4px}
+      table{width:100%;border-collapse:collapse}
+      thead tr{background:#f5f5f7}
+      th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6e6e73;border-bottom:2px solid #e5e7eb}
+      tr:nth-child(even){background:#fafafa}
+      .footer{margin-top:28px;padding-top:16px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:11px;color:#86868b}
+      @media print{body{padding:15px}.stats{gap:10px}}
+    </style></head><body>
+    <div class="header">
+      <div>
+        <div class="logo">🫐 Agro Berry</div>
+        <div class="subtitle">Rapport Mouvements</div>
+      </div>
+      <div class="meta">
+        <div class="farm">${farmNm}</div>
+        <div class="dt">${date}</div>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat" style="background:linear-gradient(135deg,#f0fff4,#dcfce7)">
+        <div class="stat-label" style="color:#15803d">Entrées magasin</div>
+        <div class="stat-value" style="color:#16a34a">${entries}</div>
+        <div class="stat-sub" style="color:#86868b">opérations</div>
+      </div>
+      <div class="stat" style="background:linear-gradient(135deg,#fff5f5,#fee2e2)">
+        <div class="stat-label" style="color:#b91c1c">Consommations</div>
+        <div class="stat-value" style="color:#dc2626">${consos}</div>
+        <div class="stat-sub" style="color:#86868b">opérations</div>
+      </div>
+      <div class="stat" style="background:linear-gradient(135deg,#f5f3ff,#ede9fe)">
+        <div class="stat-label" style="color:#6d28d9">Transferts</div>
+        <div class="stat-value" style="color:#7c3aed">${transfers}</div>
+        <div class="stat-sub" style="color:#86868b">opérations</div>
+      </div>
+      <div class="stat" style="background:#f5f5f7">
+        <div class="stat-label" style="color:#6e6e73">Total</div>
+        <div class="stat-value" style="color:#1d1d1f">${mvList.length}</div>
+        <div class="stat-sub" style="color:#86868b">mouvements</div>
+      </div>
+    </div>
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Produit</th><th>Unite</th><th>Type</th>
+        <th style="text-align:right">Quantite</th><th>Detail</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">
+      <span>Agro Berry Magasinier — ${farmNm}</span>
+      <span>${mvList.length} mouvements exportés le ${date}</span>
+    </div>
+    <script>window.onload=function(){window.print()}<\/script>
+    </body></html>`;
+
+    const w = window.open("","_blank");
+    w.document.write(html);
+    w.document.close();
+  };
+
   const activeMenu = MENUS.find(m => m.id === active);
   const farmEmoji = farmName.includes("1") ? "🌿" : farmName.includes("2") ? "🫐" : "🫐";
   const farmShort = farmName.replace("AGRO BERRY ", "AB");
@@ -833,15 +943,7 @@ export default function Dashboard({ user, userInfo }) {
                     <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                   </button>
                   <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                    exportExcel(
-                      ["Date","Ferme","Type","Produit","Quantité","Unité","Culture","Destination","Notes"],
-                      filteredMv.map(mv => {
-                        const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
-                        const type = isEntry ? "Entrée magasin" : mv.type === "consumption" ? "Consommation" : mv.type === "transfer-out" ? "Transfert sortant" : mv.type === "transfer-in" ? "Transfert entrant" : mv.type;
-                        return [mv.date, mv.farm || farmName, type, mv.product, mv.quantity, mv.unit, mv.culture||"", mv.destination||"", mv.notes||""];
-                      }),
-                      `mouvements-${farmName.replace(/ /g,"-")}`
-                    );
+                    exportMouvementsExcel(filteredMv, farmName);
                   }}>📊 Excel</button>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
