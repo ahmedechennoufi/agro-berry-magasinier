@@ -283,7 +283,20 @@ export default function Dashboard({ user, userInfo }) {
     e.preventDefault(); setLoading(true); setError("");
     try {
       const today = form.date || new Date().toISOString().split("T")[0];
-      const mv = { type: active === "transfer" ? "transfer-out" : active, product: form.product, quantity: parseFloat(form.quantity), unit: form.unit, farm: farmName, date: today };
+      const qty = parseFloat(form.quantity);
+      
+      // Bloquer si consommation > stock disponible
+      if (active === "consumption" && form.product) {
+        const stockItem = farmStock.find(s => s.product.toUpperCase() === form.product.toUpperCase());
+        const stockQty = stockItem ? stockItem.qty : 0;
+        if (qty > stockQty + 0.001) {
+          setError("Stock insuffisant — disponible : " + (stockQty % 1 === 0 ? stockQty : stockQty.toFixed(2)) + " " + (stockItem?.unit || form.unit));
+          setLoading(false);
+          return;
+        }
+      }
+      
+      const mv = { type: active === "transfer" ? "transfer-out" : active, product: form.product, quantity: qty, unit: form.unit, farm: farmName, date: today };
       if (active === "consumption") { mv.culture = form.culture; mv.destination = form.destination; }
       if (active === "entry") { if (form.supplier) mv.supplier = form.supplier; if (form.price) mv.price = parseFloat(form.price); }
       if (active === "transfer") mv.toFarm = form.toFarm;
