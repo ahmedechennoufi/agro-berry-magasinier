@@ -89,17 +89,29 @@ async function saveMelangesConfig(farmName, melangesData) {
   if (!put.ok) throw new Error("Erreur sauvegarde config " + put.status);
 }
 
-async function saveToGitHub(movements) {
+async function saveToGitHub(movements, retries = 3) {
   const mvArray = Array.isArray(movements) ? movements : [movements];
-  const { data, sha } = await fetchGitHubData();
-  mvArray.forEach((mv, i) => data.movements.push({ ...mv, id: Date.now() + i }));
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-  const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-    body: JSON.stringify({ message: `[${mvArray[0].farm}] ${mvArray[0].type}: ${mvArray[0].product} ${mvArray[0].quantity}${mvArray[0].unit}`, content, sha })
-  });
-  if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const { data, sha } = await fetchGitHubData();
+      mvArray.forEach((mv, i) => data.movements.push({ ...mv, id: Date.now() + i }));
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `[${mvArray[0].farm}] ${mvArray[0].type}: ${mvArray[0].product} ${mvArray[0].quantity}${mvArray[0].unit}`, content, sha })
+      });
+      if (put.status === 409 && attempt < retries) {
+        await new Promise(r => setTimeout(r, 1000 * attempt)); // attendre avant retry
+        continue;
+      }
+      if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
+      return; // succès
+    } catch(e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+    }
+  }
 }
 
 async function deleteFromGitHub(mvId) {
