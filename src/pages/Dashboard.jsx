@@ -808,7 +808,7 @@ export default function Dashboard({ user, userInfo }) {
                               {filtered.map(p => (
                                 <div key={p.id} className="product-item" onMouseDown={() => handleSelectProduct(p)}>
                                   <span className="product-name">{p.name}</span>
-                                  <span className="product-meta">{p.unit} · {p.category}</span>
+                                  <span className="product-meta">{p.unit}</span>
                                 </div>
                               ))}
                               <div className="product-add" onMouseDown={() => { setCustomProduct(true); fset("product",""); setSearch(""); setShowDropdown(false); }}>
