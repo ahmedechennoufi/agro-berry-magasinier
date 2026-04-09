@@ -295,6 +295,13 @@ export default function Dashboard({ user, userInfo }) {
           return;
         }
       }
+
+      // Bloquer si destination non sélectionnée pour consommation
+      if (active === "consumption" && !form.destination) {
+        setError("Veuillez sélectionner une destination.");
+        setLoading(false);
+        return;
+      }
       
       const mv = { type: active === "transfer" ? "transfer-out" : active, product: form.product, quantity: qty, unit: form.unit, farm: farmName, date: today };
       if (active === "consumption") { mv.culture = form.culture; mv.destination = form.destination; }
