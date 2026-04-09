@@ -155,7 +155,7 @@ function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
       }
     }
 
-    return Object.values(stock).filter(s => Math.abs(s.qty) > 0).sort((a,b) => a.product.localeCompare(b.product));
+    return Object.values(stock).filter(s => Math.abs(s.qty) > 0.001).sort((a,b) => a.product.localeCompare(b.product));
   } catch(e) {
     console.error("calcFarmStock error:", e);
     return [];
