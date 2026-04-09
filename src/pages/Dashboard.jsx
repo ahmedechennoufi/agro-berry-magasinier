@@ -24,10 +24,20 @@ const ALL_MENUS = [
   { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
 ];
 
-// Charger/calculer les mélanges depuis les données GitHub
+// Charger/calculer les mélanges depuis les données GitHub ou localStorage
 const loadMelanges = (githubData, farmName) => {
   try {
-    return githubData?.melangesConfig?.[farmName] || { horsSol: [], sol: [] };
+    // Priorité : GitHub → localStorage
+    const fromGithub = githubData?.melangesConfig?.[farmName];
+    if (fromGithub && (fromGithub.horsSol?.length > 0 || fromGithub.sol?.length > 0)) {
+      // Mettre en cache dans localStorage
+      localStorage.setItem("melanges_" + farmName, JSON.stringify(fromGithub));
+      return fromGithub;
+    }
+    // Fallback localStorage
+    const cached = localStorage.getItem("melanges_" + farmName);
+    if (cached) return JSON.parse(cached);
+    return { horsSol: [], sol: [] };
   } catch { return { horsSol: [], sol: [] }; }
 };
 
@@ -77,6 +87,9 @@ async function fetchGitHubData() {
 }
 
 async function saveMelangesConfig(farmName, melangesData) {
+  // Sauvegarder dans localStorage immédiatement
+  try { localStorage.setItem("melanges_" + farmName, JSON.stringify(melangesData)); } catch {}
+  // Sauvegarder sur GitHub
   const { data, sha } = await fetchGitHubData();
   if (!data.melangesConfig) data.melangesConfig = {};
   data.melangesConfig[farmName] = melangesData;
@@ -205,7 +218,14 @@ export default function Dashboard({ user, userInfo }) {
   const [mvFilter, setMvFilter] = useState("all");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [melangesConfig, setMelangesConfig] = useState({ horsSol: [], sol: [] });
+  const [melangesConfig, setMelangesConfig] = useState(() => {
+    // Charger depuis localStorage au démarrage (instant, sans attendre GitHub)
+    try {
+      const farmNm = JSON.parse(localStorage.getItem("agro_user") || "{}").farm || "";
+      const cached = localStorage.getItem("melanges_" + farmNm);
+      return cached ? JSON.parse(cached) : { horsSol: [], sol: [] };
+    } catch { return { horsSol: [], sol: [] }; }
+  });
   const [melangesSaving, setMelangesSaving] = useState(false);
   const [melangesSaved, setMelangesSaved] = useState(false);
 
