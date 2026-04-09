@@ -1322,7 +1322,7 @@ export default function Dashboard({ user, userInfo }) {
                               <div style={{height:"100%",width:item.pct+"%",background:"#dc2626",borderRadius:4}}/>
                             </div>
                           </div>
-                          <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{item.cleanUnit(seuil.unit)}</div>
+                          <div style={{textAlign:"center",fontSize:12,color:"#86868b"}}>{cleanUnit(seuil.unit)}</div>
                           <div style={{textAlign:"right",fontSize:18,fontWeight:800,color:"#dc2626",fontFamily:"monospace"}}>
                             {item.qty%1===0?item.qty:item.qty.toFixed(2)}
                           </div>
