@@ -283,15 +283,7 @@ export default function Dashboard({ user, userInfo }) {
       }
 
       await saveToGitHub(mouvementsToSave);
-      setFarmMovements(prev => [{ ...mv }, ...prev]);
-      setFarmStock(prev => {
-        const updated = [...prev];
-        const idx = updated.findIndex(s => s.product === mv.product);
-        const delta = (mv.type === "exit" || mv.type === "transfer-in") ? mv.quantity : -mv.quantity;
-        if (idx >= 0) updated[idx] = { ...updated[idx], qty: updated[idx].qty + delta };
-        else updated.push({ product: mv.product, unit: mv.unit, qty: delta });
-        return updated.sort((a,b) => a.product.localeCompare(b.product));
-      });
+      loadData(); // Recharger depuis GitHub pour avoir les IDs corrects
       setSuccess(true); setForm(emptyForm); setSearch(""); setCustomProduct(false);
       setTimeout(() => setSuccess(false), 4000);
     } catch(err) { setError(err.message); }
