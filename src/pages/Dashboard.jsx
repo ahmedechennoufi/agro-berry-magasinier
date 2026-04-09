@@ -763,8 +763,8 @@ export default function Dashboard({ user, userInfo }) {
                           return (
                             <div key={mv.id||i} style={{display:"flex",alignItems:"center",padding:"12px 24px",borderBottom:"1px solid rgba(0,0,0,0.05)",gap:12}}>
                               <div style={{fontSize:11,color:"#86868b",width:80,fontFamily:"monospace",flexShrink:0}}>{mv.date}</div>
-                              <span style={{background:`${t.color}18`,color:t.color,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20,flexShrink:0}}>{t.icon} {t.label}</span>
-                              <div style={{flex:1,fontSize:12,color:"#6e6e73"}}>{mv.culture?`${mv.culture}${mv.destination?" · "+mv.destination:""}`:mv.toFarm?"→ "+mv.toFarm.replace("AGRO BERRY ","AB"):""}</div>
+                              <span style={{background:t.color+"18",color:t.color,fontSize:11,fontWeight:600,padding:"3px 10px",borderRadius:20,flexShrink:0}}>{t.icon} {t.label}</span>
+                              <div style={{flex:1,fontSize:12,color:"#6e6e73"}}>{mv.culture?(mv.culture+(mv.destination?" · "+mv.destination:"")):mv.toFarm?"→ "+mv.toFarm.replace("AGRO BERRY ","AB"):""}</div>
                               <div style={{fontWeight:700,fontSize:14,color:isPlus?"#16a34a":"#dc2626",fontFamily:"monospace",flexShrink:0}}>
                                 {isPlus?"+":"-"}{mv.quantity%1===0?mv.quantity:parseFloat(mv.quantity).toFixed(2)} {mv.unit}
                               </div>
@@ -816,7 +816,7 @@ export default function Dashboard({ user, userInfo }) {
           {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && (
             <div className="page">
               <div className="form-card">
-                {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? ` · Entrée créée automatiquement sur ${form.toFarm.replace("AGRO BERRY ","AGB")}.` : ""}</div>}
+                {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? " · Entrée créée automatiquement sur "+form.toFarm.replace("AGRO BERRY ","AGB")+"." : ""}</div>}
                 {error && <div className="alert error">✗ {error}</div>}
                 <form onSubmit={handleSubmit}>
                   <div className="form-grid">
