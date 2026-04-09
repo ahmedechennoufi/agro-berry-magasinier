@@ -218,9 +218,9 @@ export default function Dashboard({ user, userInfo }) {
 
   useEffect(() => { loadData(); }, [farmName]);
 
-  // Recharger depuis GitHub quand on ouvre l'onglet Mouvements ou Mélanges
+  // Recharger depuis GitHub quand on ouvre l'onglet Mélanges uniquement
   useEffect(() => {
-    if (active === "history" || active === "melanges") loadData();
+    if (active === "melanges") loadData();
   }, [active]);
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
