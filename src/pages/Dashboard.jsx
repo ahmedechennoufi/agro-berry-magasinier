@@ -1004,23 +1004,99 @@ export default function Dashboard({ user, userInfo }) {
                     <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                   </button>
                   <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
-                    const BOM = "\uFEFF";
-                    const headers = ["Date","Produit","Unite","Type","Quantite","Detail"];
-                    const rows = filteredMv.map(mv => {
-                      const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
-                      const type = isEntry ? "Entree magasin" : mv.type === "consumption" ? "Consommation" : mv.type === "transfer-out" ? "Transfert sortant" : mv.type === "transfer-in" ? "Transfert entrant" : mv.type;
-                      const detail = mv.culture ? mv.culture+(mv.destination?" - "+mv.destination:"") : mv.toFarm ? mv.toFarm : mv.autoFrom ? mv.autoFrom : "";
-                      const qty = (isEntry ? "+" : "-") + (mv.quantity||0);
-                      return [mv.date, mv.product, mv.unit||"", type, qty, detail];
-                    });
-                    const csv = BOM + [headers, ...rows].map(r => r.map(c => '"'+String(c).replace(/"/g,'""')+'"').join(";")).join("\n");
-                    const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = "mouvements-"+farmName.replace(/ /g,"-")+"-"+new Date().toISOString().split("T")[0]+".csv";
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    const date = new Date().toLocaleDateString("fr-FR",{day:"2-digit",month:"long",year:"numeric"});
+                    const entries = filteredMv.filter(m => m.type==="exit" && farmName!=="AGRO BERRY 1").length;
+                    const consos = filteredMv.filter(m => m.type==="consumption").length;
+                    const transfers = filteredMv.filter(m => m.type==="transfer-out"||m.type==="transfer-in").length;
+                    const typeLabel = (mv) => {
+                      if (mv.type==="exit" && farmName!=="AGRO BERRY 1") return {l:"Entrée magasin",c:"#16a34a",bg:"#f0fff4"};
+                      if (mv.type==="consumption") return {l:"Consommation",c:"#dc2626",bg:"#fff5f5"};
+                      if (mv.type==="transfer-out") return {l:"Transfert sortant",c:"#7c3aed",bg:"#f5f3ff"};
+                      if (mv.type==="transfer-in") return {l:"Transfert entrant",c:"#2563eb",bg:"#eff6ff"};
+                      return {l:mv.type,c:"#6e6e73",bg:"#f5f5f7"};
+                    };
+                    const isPlus = (mv) => mv.type==="exit"||mv.type==="transfer-in";
+                    const detail = (mv) => mv.culture?(mv.culture+(mv.destination?" · "+mv.destination:"")):mv.toFarm?"→ "+mv.toFarm.replace("AGRO BERRY ","AB"):mv.autoFrom?"← "+mv.autoFrom.replace("AGRO BERRY ","AB"):"—";
+                    const rows = filteredMv.map((mv,i) => {
+                      const t = typeLabel(mv);
+                      const plus = isPlus(mv);
+                      const qty = (mv.quantity||0);
+                      const qtyFmt = qty%1===0?qty:parseFloat(qty).toFixed(2);
+                      return `<tr style="background:${i%2===0?"#fff":"#f9fafb"};border-bottom:1px solid #f0f0f0">
+                        <td style="padding:10px 14px;font-size:12px;color:#6e6e73;white-space:nowrap;font-family:monospace">${mv.date||""}</td>
+                        <td style="padding:10px 14px;font-size:13px;font-weight:600;color:#1d1d1f">${mv.product||""}</td>
+                        <td style="padding:10px 14px;font-size:11px;color:#86868b;text-align:center">${mv.unit||""}</td>
+                        <td style="padding:10px 14px;text-align:center"><span style="background:${t.bg};color:${t.c};font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap">${t.l}</span></td>
+                        <td style="padding:10px 14px;text-align:right;font-size:15px;font-weight:800;color:${plus?"#16a34a":"#dc2626"};font-family:monospace">${plus?"+":"-"}${qtyFmt}</td>
+                        <td style="padding:10px 14px;font-size:12px;color:#6e6e73">${detail(mv)}</td>
+                      </tr>`;
+                    }).join("");
+                    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Mouvements ${farmName}</title>
+                    <style>
+                      *{margin:0;padding:0;box-sizing:border-box}
+                      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f7;color:#1d1d1f;padding:32px}
+                      .container{max-width:1100px;margin:0 auto;background:#fff;border-radius:20px;box-shadow:0 4px 40px rgba(0,0,0,0.08);overflow:hidden}
+                      .header{background:linear-gradient(135deg,#1a1a2e,#16213e);padding:32px 40px;color:#fff;display:flex;justify-content:space-between;align-items:center}
+                      .logo{font-size:28px;font-weight:800;letter-spacing:-1px}
+                      .logo span{color:#2ecc71}
+                      .header-right{text-align:right}
+                      .farm-name{font-size:20px;font-weight:700;color:#fff;margin-bottom:4px}
+                      .report-date{font-size:13px;color:rgba(255,255,255,0.6)}
+                      .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-bottom:1px solid #f0f0f0}
+                      .stat{padding:24px 28px;border-right:1px solid #f0f0f0;position:relative;overflow:hidden}
+                      .stat:last-child{border-right:none}
+                      .stat::after{content:"";position:absolute;top:0;left:0;width:4px;height:100%}
+                      .stat.green::after{background:#2ecc71}
+                      .stat.red::after{background:#dc2626}
+                      .stat.purple::after{background:#7c3aed}
+                      .stat.gray::after{background:#94a3b8}
+                      .stat-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#86868b;margin-bottom:8px}
+                      .stat-value{font-size:32px;font-weight:800;line-height:1;margin-bottom:4px}
+                      .stat-sub{font-size:11px;color:#86868b}
+                      .stat.green .stat-value{color:#16a34a}
+                      .stat.red .stat-value{color:#dc2626}
+                      .stat.purple .stat-value{color:#7c3aed}
+                      .stat.gray .stat-value{color:#1d1d1f}
+                      .table-wrap{overflow-x:auto}
+                      table{width:100%;border-collapse:collapse}
+                      thead tr{background:#f8fafc;border-bottom:2px solid #e5e7eb}
+                      th{padding:12px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6e6e73}
+                      th.right{text-align:right}
+                      th.center{text-align:center}
+                      tbody tr:hover{background:#f0fff4 !important}
+                      .footer{padding:20px 40px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center;background:#f8fafc}
+                      .footer-left{font-size:12px;color:#86868b}
+                      .footer-right{font-size:12px;color:#86868b}
+                      .badge{display:inline-block;background:#1d1d1f;color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px}
+                      @media print{body{padding:0;background:#fff}.container{box-shadow:none;border-radius:0}tbody tr:hover{background:inherit !important}}
+                    </style></head><body>
+                    <div class="container">
+                      <div class="header">
+                        <div><div class="logo">🫐 Agro<span>Berry</span></div><div style="font-size:13px;color:rgba(255,255,255,0.5);margin-top:6px">Rapport Mouvements de Stock</div></div>
+                        <div class="header-right"><div class="farm-name">${farmName}</div><div class="report-date">Exporté le ${date}</div><div style="margin-top:8px"><span class="badge">${filteredMv.length} mouvements</span></div></div>
+                      </div>
+                      <div class="stats">
+                        <div class="stat green"><div class="stat-label">Entrées magasin</div><div class="stat-value">${entries}</div><div class="stat-sub">opérations</div></div>
+                        <div class="stat red"><div class="stat-label">Consommations</div><div class="stat-value">${consos}</div><div class="stat-sub">opérations</div></div>
+                        <div class="stat purple"><div class="stat-label">Transferts</div><div class="stat-value">${transfers}</div><div class="stat-sub">opérations</div></div>
+                        <div class="stat gray"><div class="stat-label">Total</div><div class="stat-value">${filteredMv.length}</div><div class="stat-sub">mouvements</div></div>
+                      </div>
+                      <div class="table-wrap">
+                        <table>
+                          <thead><tr>
+                            <th>Date</th><th>Produit</th><th class="center">Unité</th><th class="center">Type</th><th class="right">Quantité</th><th>Détail</th>
+                          </tr></thead>
+                          <tbody>${rows}</tbody>
+                        </table>
+                      </div>
+                      <div class="footer">
+                        <div class="footer-left">🫐 Agro Berry Magasinier — ${farmName}</div>
+                        <div class="footer-right">${filteredMv.length} mouvements · ${date}</div>
+                      </div>
+                    </div>
+                    <script>window.onload=function(){window.print()}<\/script>
+                    </body></html>`;
+                    const w=window.open("","_blank"); w.document.write(html); w.document.close();
                   }}>📊 Excel</button>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
