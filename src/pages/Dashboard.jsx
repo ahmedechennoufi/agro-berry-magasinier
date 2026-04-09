@@ -885,9 +885,13 @@ export default function Dashboard({ user, userInfo }) {
                     </div>
                     <div className="form-group">
                       <div className="form-label">Unité</div>
-                      <select className="form-input" value={form.unit} onChange={e => fset("unit", e.target.value)}>
-                        <option value="KG">KG</option><option value="L">L</option><option value="UNITÉ">UNITÉ</option>
-                      </select>
+                      {form.product ? (
+                        <div className="form-input" style={{background:"#f5f5f7",color:"#6e6e73",cursor:"not-allowed",display:"flex",alignItems:"center"}}>{form.unit}</div>
+                      ) : (
+                        <select className="form-input" value={form.unit} onChange={e => fset("unit", e.target.value)}>
+                          <option value="KG">KG</option><option value="L">L</option><option value="UNITÉ">UNITÉ</option>
+                        </select>
+                      )}
                     </div>
                     {active === "consumption" && <>
                       <div className="form-group">
