@@ -958,10 +958,26 @@ export default function Dashboard({ user, userInfo }) {
                     {active === "transfer" && (
                       <div className="form-group full">
                         <div className="form-label">Vers la ferme *</div>
-                        <select className="form-input" value={form.toFarm} onChange={e => fset("toFarm", e.target.value)} required>
+                        <select className="form-input" 
+                          value={FARMS.filter(f=>f!==farmName).includes(form.toFarm) ? form.toFarm : form.toFarm === "" ? "" : "__autre__"}
+                          onChange={e => { 
+                            if (e.target.value === "__autre__") fset("toFarm", "");
+                            else fset("toFarm", e.target.value); 
+                          }}>
                           <option value="">Sélectionner</option>
-                          {FARMS.filter(f => f !== farmName).map(f => <option key={f}>{f}</option>)}
+                          {FARMS.filter(f => f !== farmName).map(f => <option key={f} value={f}>{f}</option>)}
+                          <option value="__autre__">✏️ Autre ferme...</option>
                         </select>
+                        {!FARMS.filter(f=>f!==farmName).includes(form.toFarm) && form.toFarm !== "" && (
+                          <input className="form-input" style={{marginTop:8}} value={form.toFarm}
+                            onChange={e => fset("toFarm", e.target.value)}
+                            placeholder="Ex: AGRO BERRY 4..." />
+                        )}
+                        {FARMS.filter(f=>f!==farmName).includes(form.toFarm) === false && form.toFarm === "" && (
+                          <input className="form-input" style={{marginTop:8}} value=""
+                            onChange={e => fset("toFarm", e.target.value)}
+                            placeholder="Nom de la ferme..." />
+                        )}
                       </div>
                     )}
                     <div className="form-group full">
