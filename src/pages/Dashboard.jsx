@@ -1102,7 +1102,7 @@ export default function Dashboard({ user, userInfo }) {
                 <>
                   <div className="mv-table">
                     <div className="mv-table-header" style={{gridTemplateColumns:"110px 1fr 150px 100px 160px"}}>
-                      <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span>Détail</span>
+                      <span>Date</span><span>Produit</span><span>Type</span><span style={{textAlign:"right"}}>Quantité</span><span style={{textAlign:"right"}}>Valeur</span><span>Détail</span>
                     </div>
                     {paginatedMv.map((mv, i) => {
                       if (!mv || !mv.product) return null;
@@ -1117,8 +1117,12 @@ export default function Dashboard({ user, userInfo }) {
                       else if (mv.toFarm) detail = "→ " + mv.toFarm.replace("AGRO BERRY ","AB");
                       else if (mv.fromFarm) detail = "De " + mv.fromFarm.replace("AGRO BERRY ","AB");
                       else if (mv.autoFrom) detail = "← " + mv.autoFrom.replace("AGRO BERRY ","AB");
+                      // Calcul valeur MAD
+                      const productInfo = products.find(p => p.name?.toUpperCase() === mv.product?.toUpperCase());
+                      const prix = productInfo?.price || mv.price || 0;
+                      const valeur = prix * (parseFloat(mv.quantity) || 0);
                       return (
-                        <div key={mv.id || i} className="mv-row" style={{gridTemplateColumns:"110px 1fr 150px 100px 160px"}}>
+                        <div key={mv.id || i} className="mv-row" style={{gridTemplateColumns:"110px 1fr 150px 90px 90px 150px"}}>
                           <span className="mv-date">{mv.date}</span>
                           <div>
                             <div className="mv-product">{mv.product}</div>
@@ -1131,6 +1135,9 @@ export default function Dashboard({ user, userInfo }) {
                           </div>
                           <div className="mv-qty" style={{color:isPlus?"#16a34a":"#dc2626",textAlign:"right"}}>
                             {isPlus?"+":"-"}{(mv.quantity||0)%1===0?(mv.quantity||0):parseFloat(mv.quantity||0).toFixed(2)}
+                          </div>
+                          <div style={{textAlign:"right",fontSize:12,fontWeight:600,color:valeur>0?"#1d1d1f":"#86868b"}}>
+                            {valeur>0 ? valeur.toLocaleString("fr-FR",{minimumFractionDigits:0,maximumFractionDigits:0})+" MAD" : "—"}
                           </div>
                           <div style={{fontSize:12,color:"#6e6e73"}}>{detail||"—"}</div>
                           <div style={{display:"flex",gap:4}}>
