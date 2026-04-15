@@ -248,14 +248,19 @@ export default function Dashboard({ user, userInfo }) {
   const fset = (k,v) => setForm(prev => ({ ...prev, [k]: v }));
   const destinations = farmConfig.destinations[form.culture] || [];
 
+  const [loadError, setLoadError] = useState("");
   const loadData = () => {
     setLoadingStock(true);
+    setLoadError("");
     fetchGitHubData().then(({ data }) => {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
       setMelangesConfig(loadMelanges(data, farmName));
-    }).catch(err => console.error('GitHub error:', err)).finally(() => setLoadingStock(false));
+    }).catch(err => {
+      console.error('GitHub error:', err);
+      setLoadError("⚠️ Erreur chargement : " + err.message);
+    }).finally(() => setLoadingStock(false));
   };
 
   useEffect(() => { loadData(); }, [farmName]);
@@ -763,6 +768,11 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="stat-value">{loadingStock ? "—" : filteredStock.length}</div>
                 </div>
               </div>
+              {loadError && (
+                <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:12,padding:"12px 16px",marginBottom:16,color:"#dc2626",fontSize:13,fontWeight:500}}>
+                  {loadError}
+                </div>
+              )}
               <div className="stock-header">
                 <input className="stock-search" placeholder="Rechercher un produit..." value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
                 <button className="refresh-btn" onClick={loadData}>
