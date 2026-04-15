@@ -106,15 +106,24 @@ async function saveMelangesConfig(farmName, melangesData) {
 
 async function saveToGitHub(movements, retries = 3) {
   const mvArray = Array.isArray(movements) ? movements : [movements];
+  // Générer les IDs AVANT la boucle de retry pour éviter les doublons
+  // Si le 1er essai réussit mais la réponse réseau est perdue, le retry
+  // détectera que ces IDs existent déjà et ne les re-ajoutera pas
+  const now = Date.now();
+  const mvWithIds = mvArray.map((mv, i) => ({ ...mv, id: now + i }));
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const { data, sha } = await fetchGitHubData();
-      mvArray.forEach((mv, i) => data.movements.push({ ...mv, id: Date.now() + i }));
+      // Vérification idempotence : ne pas ajouter si l'ID existe déjà
+      const existingIds = new Set(data.movements.map(m => m.id));
+      const toAdd = mvWithIds.filter(mv => !existingIds.has(mv.id));
+      if (toAdd.length === 0) return; // déjà sauvegardé lors d'un retry précédent
+      toAdd.forEach(mv => data.movements.push(mv));
       const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
       const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `[${mvArray[0].farm}] ${mvArray[0].type}: ${mvArray[0].product} ${mvArray[0].quantity}${mvArray[0].unit}`, content, sha })
+        body: JSON.stringify({ message: `[${mvWithIds[0].farm}] ${mvWithIds[0].type}: ${mvWithIds[0].product} ${mvWithIds[0].quantity}${mvWithIds[0].unit}`, content, sha })
       });
       if (put.status === 409 && attempt < retries) {
         await new Promise(r => setTimeout(r, 1000 * attempt)); // attendre avant retry
@@ -358,6 +367,45 @@ export default function Dashboard({ user, userInfo }) {
       });
     } catch(err) { alert("Erreur suppression : " + err.message); }
     setDeletingId(null);
+  };
+
+  const handleDeduplication = async () => {
+    if (!window.confirm("Supprimer les mouvements en double ?\n\nSeul le premier exemplaire de chaque doublon sera conservé.\nCela corrigera les stocks négatifs causés par les doublons.")) return;
+    setLoadingStock(true);
+    try {
+      const { data, sha } = await fetchGitHubData();
+      const seen = new Set();
+      const cleaned = [];
+      let removed = 0;
+      for (const mv of data.movements) {
+        // Clé unique basée sur contenu (pour détecter les vrais doublons)
+        const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
+        if (seen.has(key)) {
+          removed++;
+        } else {
+          seen.add(key);
+          cleaned.push(mv);
+        }
+      }
+      if (removed === 0) {
+        alert("Aucun doublon trouvé !");
+        setLoadingStock(false);
+        return;
+      }
+      data.movements = cleaned;
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `[FIX] Suppression ${removed} mouvement(s) en double`, content, sha })
+      });
+      if (!put.ok) throw new Error("Erreur GitHub " + put.status);
+      alert(`✅ ${removed} doublon(s) supprimé(s) ! Le stock va se recalculer.`);
+      loadData();
+    } catch(err) {
+      alert("Erreur dédoublonnage : " + err.message);
+      setLoadingStock(false);
+    }
   };
 
   const exportExcel = (headers, rows, filename) => {
@@ -721,6 +769,11 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" onClick={loadData}>
                   <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                 </button>
+                {negativeStock.length > 0 && (
+                  <button className="refresh-btn" style={{background:"#f59e0b",border:"none",color:"#fff",fontWeight:600}} onClick={handleDeduplication}>
+                    🧹 Corriger doublons ({negativeStock.length} négatifs)
+                  </button>
+                )}
                 <button className="refresh-btn" style={{background:"#dc2626",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   const date = new Date().toLocaleDateString("fr-FR", {day:"2-digit",month:"long",year:"numeric"});
                   const rows = positiveStock.map(s => `
