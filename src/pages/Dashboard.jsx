@@ -199,9 +199,8 @@ function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
       }
     }
 
-    // Plancher à 0 - stock jamais négatif
-    Object.values(stock).forEach(s => { s.qty = Math.max(0, s.qty); });
-    return Object.values(stock).filter(s => s.qty > 0.001).sort((a,b) => a.product.localeCompare(b.product));
+    // Afficher positifs ET négatifs (les négatifs = doublons détectables)
+    return Object.values(stock).filter(s => Math.abs(s.qty) > 0.001).sort((a,b) => a.product.localeCompare(b.product));
   } catch(e) {
     console.error("calcFarmStock error:", e);
     return [];
