@@ -190,7 +190,9 @@ function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
       }
     }
 
-    return Object.values(stock).filter(s => Math.abs(s.qty) > 0.001).sort((a,b) => a.product.localeCompare(b.product));
+    // Plancher à 0 - stock jamais négatif
+    Object.values(stock).forEach(s => { s.qty = Math.max(0, s.qty); });
+    return Object.values(stock).filter(s => s.qty > 0.001).sort((a,b) => a.product.localeCompare(b.product));
   } catch(e) {
     console.error("calcFarmStock error:", e);
     return [];
@@ -288,7 +290,7 @@ export default function Dashboard({ user, userInfo }) {
       // Bloquer si consommation > stock disponible
       if (active === "consumption" && form.product) {
         const stockItem = farmStock.find(s => s.product.toUpperCase() === form.product.toUpperCase());
-        const stockQty = stockItem ? stockItem.qty : 0;
+        const stockQty = stockItem ? Math.max(0, stockItem.qty) : 0;
         if (qty > stockQty + 0.001) {
           setError("Stock insuffisant — disponible : " + (stockQty % 1 === 0 ? stockQty : stockQty.toFixed(2)) + " " + (stockItem?.unit || form.unit));
           setLoading(false);
@@ -908,7 +910,7 @@ export default function Dashboard({ user, userInfo }) {
                       {(() => {
                         if (!form.product) return null;
                         const stockItem = farmStock.find(s => s.product === form.product);
-                        const stockQty = stockItem ? stockItem.qty : 0;
+                        const stockQty = stockItem ? Math.max(0, stockItem.qty) : 0;
                         const unit = stockItem ? stockItem.unit : form.unit;
                         const qty = parseFloat(form.quantity) || 0;
                         const remaining = stockQty - qty;
