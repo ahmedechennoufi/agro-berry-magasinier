@@ -91,20 +91,47 @@ async function saveMelangesConfig(farmName, melangesData) {
     localStorage.setItem("melanges_" + farmName, JSON.stringify(melangesData));
     localStorage.setItem("melanges_cache", JSON.stringify(melangesData));
   } catch {}
-  // Sauvegarder sur GitHub
-  const { data, sha } = await fetchGitHubData();
-  if (!data.melangesConfig) data.melangesConfig = {};
-  data.melangesConfig[farmName] = melangesData;
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-  const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-    body: JSON.stringify({ message: `[CONFIG] melanges ${farmName}`, content, sha })
-  });
-  if (!put.ok) throw new Error("Erreur sauvegarde config " + put.status);
+  // Sauvegarder sur GitHub avec retry en cas de conflit
+  await githubPutWithRetry(
+    async () => {
+      const { data, sha } = await fetchGitHubData();
+      if (!data.melangesConfig) data.melangesConfig = {};
+      data.melangesConfig[farmName] = melangesData;
+      return { data, sha };
+    },
+    `[CONFIG] melanges ${farmName}`,
+    "Erreur sauvegarde config"
+  );
 }
 
-async function saveToGitHub(movements, retries = 3) {
+// Helper réutilisable : effectue un PUT GitHub avec retry automatique sur conflit 409
+// builderFn doit retourner {data, sha} (frais à chaque tentative)
+async function githubPutWithRetry(builderFn, commitMessage, errPrefix = "Erreur GitHub", retries = 6) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const { data, sha } = await builderFn();
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: commitMessage, content, sha })
+      });
+      if (put.status === 409 && attempt < retries) {
+        const delay = 200 + Math.random() * 300 * attempt;
+        console.log(`🔄 Conflit GitHub 409 (${commitMessage}), retry ${attempt}/${retries} dans ${Math.round(delay)}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      if (!put.ok) throw new Error(`${errPrefix} ${put.status}`);
+      return;
+    } catch(e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 500 * attempt));
+    }
+  }
+}
+
+async function saveToGitHub(movements, retries = 6) {
   const mvArray = Array.isArray(movements) ? movements : [movements];
   // Générer les IDs AVANT la boucle de retry pour éviter les doublons
   // Si le 1er essai réussit mais la réponse réseau est perdue, le retry
@@ -126,33 +153,55 @@ async function saveToGitHub(movements, retries = 3) {
         body: JSON.stringify({ message: `[${mvWithIds[0].farm}] ${mvWithIds[0].type}: ${mvWithIds[0].product} ${mvWithIds[0].quantity}${mvWithIds[0].unit}`, content, sha })
       });
       if (put.status === 409 && attempt < retries) {
-        await new Promise(r => setTimeout(r, 1000 * attempt)); // attendre avant retry
+        // Conflit : SHA obsolète, quelqu'un d'autre a pushé entre-temps
+        // Backoff court et aléatoire pour éviter que 2 clients retry en même temps
+        const delay = 200 + Math.random() * 300 * attempt;
+        console.log(`🔄 Conflit GitHub 409, retry ${attempt}/${retries} dans ${Math.round(delay)}ms...`);
+        await new Promise(r => setTimeout(r, delay));
         continue;
       }
       if (!put.ok) throw new Error("Erreur écriture GitHub " + put.status);
       return; // succès
     } catch(e) {
       if (attempt === retries) throw e;
-      await new Promise(r => setTimeout(r, 1000 * attempt));
+      await new Promise(r => setTimeout(r, 500 * attempt));
     }
   }
 }
 
-async function deleteFromGitHub(mvId) {
-  const { data, sha } = await fetchGitHubData();
-  const before = data.movements.length;
-  data.movements = data.movements.filter(m => m.id !== mvId);
-  if (data.movements.length === before) throw new Error("Mouvement introuvable");
-  // Tracker l'ID supprimé (pour sync avec l'admin)
-  if (!data.deletedMovementIds) data.deletedMovementIds = [];
-  if (!data.deletedMovementIds.includes(mvId)) data.deletedMovementIds.push(mvId);
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-  const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-    body: JSON.stringify({ message: `[DELETE] mouvement ${mvId}`, content, sha })
-  });
-  if (!put.ok) throw new Error("Erreur suppression GitHub " + put.status);
+async function deleteFromGitHub(mvId, retries = 6) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const { data, sha } = await fetchGitHubData();
+      const before = data.movements.length;
+      data.movements = data.movements.filter(m => m.id !== mvId);
+      if (data.movements.length === before) {
+        // Si on est en retry, peut-être que c'était déjà supprimé lors d'une tentative précédente
+        if (attempt > 1) return;
+        throw new Error("Mouvement introuvable");
+      }
+      // Tracker l'ID supprimé (pour sync avec l'admin)
+      if (!data.deletedMovementIds) data.deletedMovementIds = [];
+      if (!data.deletedMovementIds.includes(mvId)) data.deletedMovementIds.push(mvId);
+      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
+      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ message: `[DELETE] mouvement ${mvId}`, content, sha })
+      });
+      if (put.status === 409 && attempt < retries) {
+        const delay = 200 + Math.random() * 300 * attempt;
+        console.log(`🔄 Conflit GitHub (delete) 409, retry ${attempt}/${retries} dans ${Math.round(delay)}ms...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+      if (!put.ok) throw new Error("Erreur suppression GitHub " + put.status);
+      return;
+    } catch(e) {
+      if (attempt === retries) throw e;
+      await new Promise(r => setTimeout(r, 500 * attempt));
+    }
+  }
 }
 
 function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
@@ -377,33 +426,34 @@ export default function Dashboard({ user, userInfo }) {
     if (!window.confirm("Supprimer les mouvements en double ?\n\nSeul le premier exemplaire de chaque doublon sera conservé.\nCela corrigera les stocks négatifs causés par les doublons.")) return;
     setLoadingStock(true);
     try {
-      const { data, sha } = await fetchGitHubData();
-      const seen = new Set();
-      const cleaned = [];
       let removed = 0;
-      for (const mv of data.movements) {
-        // Clé unique basée sur contenu (pour détecter les vrais doublons)
-        const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
-        if (seen.has(key)) {
-          removed++;
-        } else {
-          seen.add(key);
-          cleaned.push(mv);
-        }
-      }
+      await githubPutWithRetry(
+        async () => {
+          const { data, sha } = await fetchGitHubData();
+          const seen = new Set();
+          const cleaned = [];
+          removed = 0;
+          for (const mv of data.movements) {
+            // Clé unique basée sur contenu (pour détecter les vrais doublons)
+            const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
+            if (seen.has(key)) {
+              removed++;
+            } else {
+              seen.add(key);
+              cleaned.push(mv);
+            }
+          }
+          data.movements = cleaned;
+          return { data, sha };
+        },
+        `[FIX] Suppression doublons`,
+        "Erreur GitHub"
+      );
       if (removed === 0) {
         alert("Aucun doublon trouvé !");
         setLoadingStock(false);
         return;
       }
-      data.movements = cleaned;
-      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `[FIX] Suppression ${removed} mouvement(s) en double`, content, sha })
-      });
-      if (!put.ok) throw new Error("Erreur GitHub " + put.status);
       alert(`✅ ${removed} doublon(s) supprimé(s) ! Le stock va se recalculer.`);
       loadData();
     } catch(err) {
@@ -538,22 +588,22 @@ export default function Dashboard({ user, userInfo }) {
     if (!editingMv || !editDate) return;
     setDeletingId(editingMv.id);
     try {
-      const { data, sha } = await fetchGitHubData();
-      const idx = data.movements.findIndex(m => m.id === editingMv.id);
-      if (idx >= 0) data.movements[idx] = { 
-        ...data.movements[idx], 
-        date: editDate,
-        product: editingMv.product,
-        quantity: parseFloat(editingMv.quantity) || data.movements[idx].quantity,
-        unit: editingMv.unit || data.movements[idx].unit
-      };
-      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-      const put = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" },
-        body: JSON.stringify({ message: `[EDIT] ${editingMv.product}`, content, sha })
-      });
-      if (!put.ok) throw new Error("Erreur GitHub " + put.status);
+      await githubPutWithRetry(
+        async () => {
+          const { data, sha } = await fetchGitHubData();
+          const idx = data.movements.findIndex(m => m.id === editingMv.id);
+          if (idx >= 0) data.movements[idx] = { 
+            ...data.movements[idx], 
+            date: editDate,
+            product: editingMv.product,
+            quantity: parseFloat(editingMv.quantity) || data.movements[idx].quantity,
+            unit: editingMv.unit || data.movements[idx].unit
+          };
+          return { data, sha };
+        },
+        `[EDIT] ${editingMv.product}`,
+        "Erreur GitHub"
+      );
       setFarmMovements(prev => prev.map(m => m.id === editingMv.id ? { 
         ...m, date: editDate, product: editingMv.product, 
         quantity: parseFloat(editingMv.quantity)||m.quantity, unit: editingMv.unit||m.unit 
