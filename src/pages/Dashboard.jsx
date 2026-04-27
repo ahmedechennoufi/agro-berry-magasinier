@@ -68,14 +68,30 @@ const cleanUnit = (u) => {
 };
 
 
-async function fetchGitHubData() {
+// Cache local pour fallback en cas d'erreur réseau
+const DATA_CACHE_KEY = "agro_berry_data_cache_v1";
+function saveDataCache(data, sha) {
+  try { localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({ data, sha, ts: Date.now() })); } catch {}
+}
+function loadDataCache() {
+  try {
+    const raw = localStorage.getItem(DATA_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch { return null; }
+}
+
+// Sleep helper
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function fetchGitHubDataOnce() {
   // Récupérer les métadonnées (sha + download_url)
   const metaRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_FILE}`, {
     headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github+json" }
   });
   if (!metaRes.ok) throw new Error("Erreur GitHub meta " + metaRes.status);
   const meta = await metaRes.json();
-  
+
   // Lire le contenu via blob SHA (supporte > 1MB)
   const blobRes = await fetch(`https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/git/blobs/${meta.sha}`, {
     headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: "application/vnd.github.raw+json" }
@@ -83,6 +99,26 @@ async function fetchGitHubData() {
   if (!blobRes.ok) throw new Error("Erreur GitHub blob " + blobRes.status);
   const data = await blobRes.json();
   return { data, sha: meta.sha };
+}
+
+// Retry automatique : 3 tentatives avec délais croissants pour gérer les coupures réseau temporaires
+async function fetchGitHubData() {
+  const MAX_ATTEMPTS = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await fetchGitHubDataOnce();
+      saveDataCache(result.data, result.sha); // cache pour fallback futur
+      return result;
+    } catch (err) {
+      lastErr = err;
+      console.warn(`[fetchGitHubData] Tentative ${attempt}/${MAX_ATTEMPTS} échouée:`, err.message);
+      if (attempt < MAX_ATTEMPTS) {
+        await sleep(800 * attempt); // 800ms, 1600ms
+      }
+    }
+  }
+  throw lastErr;
 }
 
 async function saveMelangesConfig(farmName, melangesData) {
@@ -308,7 +344,19 @@ export default function Dashboard({ user, userInfo }) {
       setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => {
       console.error('GitHub error:', err);
-      setLoadError("⚠️ Erreur chargement : " + err.message);
+      // Fallback : utiliser le cache local si disponible pour ne pas casser l'app
+      const cached = loadDataCache();
+      if (cached && cached.data) {
+        const data = cached.data;
+        setProducts([...(data.products || [])].sort((a,b) => a.name.localeCompare(b.name)));
+        setFarmStock(calcFarmStock(data.movements || [], farmName, data[farmKey] || [], data.physicalInventories || []));
+        setFarmMovements(getFarmMovements(data.movements || [], farmName));
+        setMelangesConfig(loadMelanges(data, farmName));
+        const ageMin = Math.round((Date.now() - (cached.ts || 0)) / 60000);
+        setLoadError(`⚠️ Connexion GitHub indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
+      } else {
+        setLoadError("⚠️ Erreur chargement : " + err.message + ". Vérifiez votre connexion internet et cliquez Actualiser.");
+      }
     }).finally(() => setLoadingStock(false));
   };
 
