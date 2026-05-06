@@ -378,7 +378,7 @@ export default function Dashboard({ user, userInfo }) {
   const filteredMv = farmMovements.filter(mv => {
     const matchSearch = !mvSearch || mv.product?.toLowerCase().includes(mvSearch.toLowerCase());
     const matchFilter = mvFilter === "all" || mv.type === mvFilter ||
-      (mvFilter === "entry" && mv.type === "exit" && farmName !== "AGRO BERRY 1");
+      (mvFilter === "entry" && mv.type === "exit");
     const matchFrom = !mvDateFrom || mv.date >= mvDateFrom;
     const matchTo = !mvDateTo || mv.date <= mvDateTo;
     return matchSearch && matchFilter && matchFrom && matchTo;
@@ -459,7 +459,7 @@ export default function Dashboard({ user, userInfo }) {
         const updated = [...prev];
         const idx = updated.findIndex(s => s.product === mv.product);
         if (idx >= 0) {
-          const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+          const isEntryFromMagasin = mv.type === "exit";
           const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
           const delta = (resolvedType === "entry" || resolvedType === "transfer-in") ? -mv.quantity : mv.quantity;
           updated[idx] = { ...updated[idx], qty: updated[idx].qty + delta };
@@ -524,19 +524,19 @@ export default function Dashboard({ user, userInfo }) {
 
   const exportMouvementsExcel = (mvList, farmNm) => {
     const date = new Date().toLocaleDateString("fr-FR", {day:"2-digit",month:"long",year:"numeric"});
-    const entries = mvList.filter(m => m.type === "exit" && farmNm !== "AGRO BERRY 1").length;
+    const entries = mvList.filter(m => m.type === "exit").length;
     const consos = mvList.filter(m => m.type === "consumption").length;
     const transfers = mvList.filter(m => m.type === "transfer-out" || m.type === "transfer-in").length;
 
     const typeLabel = (mv) => {
-      if (mv.type === "exit" && farmNm !== "AGRO BERRY 1") return "Entree magasin";
+      if (mv.type === "exit") return "Entree magasin";
       if (mv.type === "consumption") return "Consommation";
       if (mv.type === "transfer-out") return "Transfert sortant";
       if (mv.type === "transfer-in") return "Transfert entrant";
       return mv.type;
     };
     const typeColor = (mv) => {
-      if (mv.type === "exit" && farmNm !== "AGRO BERRY 1") return "#16a34a";
+      if (mv.type === "exit") return "#16a34a";
       if (mv.type === "consumption") return "#dc2626";
       if (mv.type === "transfer-out" || mv.type === "transfer-in") return "#7c3aed";
       return "#1d1d1f";
@@ -957,7 +957,7 @@ export default function Dashboard({ user, userInfo }) {
                         {productMvs.length === 0 ? (
                           <div style={{textAlign:"center",padding:40,color:"#86868b"}}>Aucun mouvement</div>
                         ) : productMvs.map((mv,i) => {
-                          const isEntry = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                          const isEntry = mv.type === "exit";
                           const resolvedType = isEntry ? "entry" : mv.type;
                           const t = isEntry ? {label:"Entrée magasin",color:"#16a34a",icon:"◍"} : (TYPE_LABELS[mv.type]||{label:mv.type,color:"#94a3b8",icon:"◷"});
                           const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
@@ -1161,7 +1161,7 @@ export default function Dashboard({ user, userInfo }) {
             <div className="page">
               {/* Stats */}
               {(() => {
-                const entries = farmMovements.filter(m => m.type === "exit" && farmName !== "AGRO BERRY 1");
+                const entries = farmMovements.filter(m => m.type === "exit");
                 const consos = farmMovements.filter(m => m.type === "consumption");
                 const transfers = farmMovements.filter(m => m.type === "transfer-out" || m.type === "transfer-in");
                 return (
@@ -1204,7 +1204,7 @@ export default function Dashboard({ user, userInfo }) {
                   </button>
                   <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                     const typeLabel = (mv) => {
-                      if (mv.type==="exit" && farmName!=="AGRO BERRY 1") return "Entree magasin";
+                      if (mv.type==="exit") return "Entree magasin";
                       if (mv.type==="consumption") return "Consommation";
                       if (mv.type==="transfer-out") return "Transfert sortant";
                       if (mv.type==="transfer-in") return "Transfert entrant";
@@ -1244,7 +1244,7 @@ export default function Dashboard({ user, userInfo }) {
                       ["Date export", new Date().toLocaleDateString("fr-FR")],
                       ["", ""],
                       ["Type", "Nombre"],
-                      ["Entrees magasin", filteredMv.filter(m=>m.type==="exit"&&farmName!=="AGRO BERRY 1").length],
+                      ["Entrees magasin", filteredMv.filter(m=>m.type==="exit").length],
                       ["Consommations", filteredMv.filter(m=>m.type==="consumption").length],
                       ["Transferts", filteredMv.filter(m=>m.type==="transfer-out"||m.type==="transfer-in").length],
                       ["Total", filteredMv.length],
@@ -1284,7 +1284,7 @@ export default function Dashboard({ user, userInfo }) {
                     </div>
                     {paginatedMv.map((mv, i) => {
                       if (!mv || !mv.product) return null;
-                      const isEntryFromMagasin = mv.type === "exit" && farmName !== "AGRO BERRY 1";
+                      const isEntryFromMagasin = mv.type === "exit";
                       const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
                       const t = isEntryFromMagasin
                         ? { label: "Entrée magasin", color: "#16a34a", icon: "◍" }
