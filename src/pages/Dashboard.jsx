@@ -979,8 +979,22 @@ export default function Dashboard({ user, userInfo }) {
                 }}>📄 Export PDF</button>
                 <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   exportExcel(
-                    ["Ferme","Produit","Unité","Quantité","Date"],
-                    positiveStock.map(s => [farmName, s.product, cleanUnit(s.unit), s.qty%1===0?s.qty:s.qty.toFixed(2), new Date().toISOString().split("T")[0]]),
+                    ["Ferme","Produit","Unité","Quantité","Prix unitaire (MAD)","Valeur (MAD)","Date"],
+                    positiveStock.map(s => {
+                      const productInfo = products.find(p => p.name?.toUpperCase() === s.product?.toUpperCase());
+                      const prix = parseFloat(productInfo?.price) || 0;
+                      const qty = parseFloat(s.qty) || 0;
+                      const valeur = prix * qty;
+                      return [
+                        farmName,
+                        s.product,
+                        cleanUnit(s.unit),
+                        s.qty%1===0 ? s.qty : s.qty.toFixed(2),
+                        Math.round(prix * 100) / 100,
+                        Math.round(valeur * 100) / 100,
+                        new Date().toISOString().split("T")[0]
+                      ];
+                    }),
                     `stock-${farmName.replace(/ /g,"-")}`
                   );
                 }}>📊 Export Excel</button>
