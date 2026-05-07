@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { signOut } from "firebase/auth";
 import { auth } from "../firebase";
 import * as XLSX from "xlsx";
+import * as XLSXStyle from "xlsx-js-style";
 
 const GITHUB_TOKEN = import.meta.env.VITE_GITHUB_TOKEN;
 const GITHUB_OWNER = "ahmedechennoufi";
@@ -965,95 +966,204 @@ export default function Dashboard({ user, userInfo }) {
                     return { product: s.product, unit: cleanUnit(s.unit), qty, prix, valeur, hasPrice: prix > 0 };
                   });
 
-                  // Formatage nombres (FR)
-                  const fmtMad = (n) => n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                  const fmtQty = (n) => n%1===0 ? String(n) : n.toFixed(2);
                   const dateStr = new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
                   const fileDate = new Date().toISOString().split("T")[0];
 
-                  // Palette latte
-                  const COFFEE_DARK = "#3E2C1F";
-                  const COFFEE = "#6B4F35";
-                  const COFFEE_LIGHT = "#8B6F47";
-                  const CARAMEL = "#C9A66B";
-                  const CREAM = "#FFF8E7";
-                  const CREAM_LIGHT = "#F9F5EE";
-                  const BORDER = "#E8DFCE";
-                  const MUTED = "#A89B86";
+                  // === Palette latte (couleurs SANS le # pour xlsx-js-style) ===
+                  const COFFEE_DARK  = "3E2C1F";
+                  const COFFEE       = "6B4F35";
+                  const COFFEE_LIGHT = "8B6F47";
+                  const CARAMEL      = "C9A66B";
+                  const CARAMEL_TXT  = "D4B896";
+                  const CREAM        = "FFF8E7";
+                  const CREAM_LIGHT  = "F9F5EE";
+                  const WHITE        = "FFFFFF";
+                  const BORDER       = "E8DFCE";
+                  const MUTED        = "A89B86";
 
-                  const rowsHtml = rowsData.map((r, i) => {
-                    const bg = i % 2 === 0 ? "#FFFFFF" : CREAM_LIGHT;
-                    const cellBase = `padding:10px 14px;background:${bg};border-bottom:1px solid ${BORDER};font-family:Calibri,Arial,sans-serif;font-size:12px`;
-                    const priceCell = r.hasPrice
-                      ? `<td style="${cellBase};text-align:right;color:${COFFEE_DARK}">${fmtMad(r.prix)}</td>`
-                      : `<td style="${cellBase};text-align:right;color:${MUTED};font-style:italic">À renseigner</td>`;
-                    const valueCell = r.hasPrice
-                      ? `<td style="${cellBase};text-align:right;font-weight:700;color:${COFFEE_DARK}">${fmtMad(r.valeur)}</td>`
-                      : `<td style="${cellBase};text-align:right;color:${MUTED};font-style:italic">À renseigner</td>`;
-                    return `<tr>
-                      <td style="${cellBase};color:${COFFEE};font-weight:500">${farmName}</td>
-                      <td style="${cellBase};color:${COFFEE_DARK};font-weight:600">${r.product}</td>
-                      <td style="${cellBase};text-align:center;color:${COFFEE_LIGHT}">${r.unit}</td>
-                      <td style="${cellBase};text-align:right;font-weight:600;color:${COFFEE_DARK}">${fmtQty(r.qty)}</td>
-                      ${priceCell}
-                      ${valueCell}
-                    </tr>`;
-                  }).join("");
+                  // === Construire la feuille (AOA = Array of Arrays) ===
+                  const aoa = [];
+                  // Ligne 0 : titre principal
+                  aoa.push(["🫐 Agro Berry", "", "", "", "", ""]);
+                  // Ligne 1 : sous-titre
+                  aoa.push([`Rapport de stock — ${farmName}`, "", "", "", "", ""]);
+                  // Ligne 2 : date
+                  aoa.push([`📅 ${dateStr}`, "", "", "", "", ""]);
+                  // Ligne 3 : badge stats
+                  const statsTxt = `📦 ${rowsData.length} produits   💰 ${totalValeur.toLocaleString("fr-FR",{minimumFractionDigits:2,maximumFractionDigits:2})} MAD${countMissing > 0 ? `   ⚠️ ${countMissing} sans prix` : ""}`;
+                  aoa.push([statsTxt, "", "", "", "", ""]);
+                  // Ligne 4 : spacer
+                  aoa.push(["", "", "", "", "", ""]);
+                  // Ligne 5 : headers
+                  aoa.push(["Ferme","Produit","Unité","Quantité","Prix unit. (MAD)","Valeur (MAD)"]);
+                  // Lignes 6+ : data
+                  rowsData.forEach(r => {
+                    aoa.push([
+                      farmName,
+                      r.product,
+                      r.unit,
+                      r.qty,
+                      r.hasPrice ? r.prix : "À renseigner",
+                      r.hasPrice ? r.valeur : "À renseigner"
+                    ]);
+                  });
+                  // Ligne total
+                  const totalRowIdx = aoa.length;
+                  aoa.push(["", "", "", "", "TOTAL GÉNÉRAL", totalValeur]);
 
-                  const html = `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
-<head>
-<meta charset="utf-8">
-<title>Stock ${farmName}</title>
-<!--[if gte mso 9]>
-<xml>
-<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
-<x:Name>Stock</x:Name>
-<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
-</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
-</xml>
-<![endif]-->
-</head>
-<body>
-<table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif">
-  <tr><td colspan="6" style="padding:24px 20px;background:${COFFEE};color:${CREAM};font-family:Calibri,Arial,sans-serif">
-    <div style="font-size:24px;font-weight:800;letter-spacing:-0.5px">🫐 Agro Berry</div>
-    <div style="font-size:13px;color:#D4B896;margin-top:4px">Rapport de stock — ${farmName}</div>
-  </td></tr>
-  <tr><td colspan="6" style="padding:12px 20px;background:${COFFEE_DARK};color:#D4B896;font-size:12px;letter-spacing:0.3px;text-transform:capitalize;font-family:Calibri,Arial,sans-serif">
-    📅 ${dateStr}
-  </td></tr>
-  <tr><td colspan="6" style="padding:16px 20px;background:${CARAMEL};color:${COFFEE_DARK};font-weight:700;font-size:13px;font-family:Calibri,Arial,sans-serif">
-    📦 ${rowsData.length} produits en stock&nbsp;·&nbsp; 💰 ${fmtMad(totalValeur)} MAD de valeur totale${countMissing > 0 ? `&nbsp;·&nbsp; ⚠️ ${countMissing} produit(s) sans prix` : ""}
-  </td></tr>
-  <tr><td colspan="6" style="height:10px;background:#F5F0E8"></td></tr>
-  <tr style="background:${COFFEE_DARK};color:${CREAM}">
-    <th style="padding:13px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Ferme</th>
-    <th style="padding:13px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Produit</th>
-    <th style="padding:13px 14px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Unité</th>
-    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Quantité</th>
-    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Prix unit. (MAD)</th>
-    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Valeur (MAD)</th>
-  </tr>
-  ${rowsHtml}
-  <tr style="background:${CARAMEL};color:${COFFEE_DARK}">
-    <td colspan="5" style="padding:14px 14px;text-align:right;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;font-family:Calibri,Arial,sans-serif;border-top:2px solid ${COFFEE_DARK}">Total Général</td>
-    <td style="padding:14px 14px;text-align:right;font-weight:800;font-size:14px;font-family:Calibri,Arial,sans-serif;border-top:2px solid ${COFFEE_DARK}">${fmtMad(totalValeur)}</td>
-  </tr>
-</table>
-<div style="padding:14px 20px;background:#F5F0E8;color:${COFFEE_LIGHT};font-size:11px;text-align:center;border-top:1px solid ${BORDER};font-family:Calibri,Arial,sans-serif">
-  Agro Berry Magasinier — Généré le ${dateStr}
-</div>
-</body>
-</html>`;
+                  const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
 
-                  const blob = new Blob(["\uFEFF" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `stock-${farmName.replace(/ /g,"-")}-${fileDate}.xls`;
-                  a.click();
-                  URL.revokeObjectURL(url);
+                  // === Largeur des colonnes ===
+                  ws["!cols"] = [
+                    { wch: 18 }, { wch: 32 }, { wch: 8 }, { wch: 12 }, { wch: 18 }, { wch: 18 }
+                  ];
+
+                  // === Hauteur des lignes ===
+                  ws["!rows"] = [
+                    { hpx: 36 }, // titre
+                    { hpx: 22 }, // sous-titre
+                    { hpx: 22 }, // date
+                    { hpx: 28 }, // badge
+                    { hpx: 8  }, // spacer
+                    { hpx: 28 }, // headers
+                  ];
+                  for (let i = 6; i < totalRowIdx; i++) ws["!rows"].push({ hpx: 22 });
+                  ws["!rows"].push({ hpx: 32 }); // total
+
+                  // === Fusions ===
+                  ws["!merges"] = [
+                    { s: { r:0, c:0 }, e: { r:0, c:5 } }, // titre
+                    { s: { r:1, c:0 }, e: { r:1, c:5 } }, // sous-titre
+                    { s: { r:2, c:0 }, e: { r:2, c:5 } }, // date
+                    { s: { r:3, c:0 }, e: { r:3, c:5 } }, // badge
+                    { s: { r:4, c:0 }, e: { r:4, c:5 } }, // spacer
+                  ];
+
+                  // === Helpers de style ===
+                  const border = (color = BORDER, style = "thin") => ({
+                    top:    { style, color: { rgb: color } },
+                    bottom: { style, color: { rgb: color } },
+                    left:   { style, color: { rgb: color } },
+                    right:  { style, color: { rgb: color } },
+                  });
+
+                  // Titre (row 0)
+                  ws["A1"].s = {
+                    font: { name: "Calibri", sz: 22, bold: true, color: { rgb: CREAM } },
+                    fill: { fgColor: { rgb: COFFEE } },
+                    alignment: { horizontal: "left", vertical: "center", indent: 1 }
+                  };
+                  // Sous-titre (row 1)
+                  ws["A2"].s = {
+                    font: { name: "Calibri", sz: 12, color: { rgb: CARAMEL_TXT } },
+                    fill: { fgColor: { rgb: COFFEE } },
+                    alignment: { horizontal: "left", vertical: "center", indent: 1 }
+                  };
+                  // Date (row 2)
+                  ws["A3"].s = {
+                    font: { name: "Calibri", sz: 11, color: { rgb: CARAMEL_TXT } },
+                    fill: { fgColor: { rgb: COFFEE_DARK } },
+                    alignment: { horizontal: "left", vertical: "center", indent: 1 }
+                  };
+                  // Badge stats (row 3)
+                  ws["A4"].s = {
+                    font: { name: "Calibri", sz: 12, bold: true, color: { rgb: COFFEE_DARK } },
+                    fill: { fgColor: { rgb: CARAMEL } },
+                    alignment: { horizontal: "left", vertical: "center", indent: 1 }
+                  };
+                  // Spacer (row 4) — pas de fill spécifique, transparent
+
+                  // Headers (row 5)
+                  const headerCols = ["A","B","C","D","E","F"];
+                  const headerAligns = ["left","left","center","right","right","right"];
+                  headerCols.forEach((col, idx) => {
+                    const cell = ws[`${col}6`];
+                    if (!cell) return;
+                    cell.s = {
+                      font: { name: "Calibri", sz: 11, bold: true, color: { rgb: CREAM } },
+                      fill: { fgColor: { rgb: COFFEE_DARK } },
+                      alignment: { horizontal: headerAligns[idx], vertical: "center", indent: 1 },
+                      border: border(COFFEE_DARK)
+                    };
+                  });
+
+                  // Data rows (rows 6 → totalRowIdx-1)
+                  for (let i = 6; i < totalRowIdx; i++) {
+                    const isAlt = (i - 6) % 2 === 1;
+                    const bg = isAlt ? CREAM_LIGHT : WHITE;
+                    const r = rowsData[i - 6];
+                    const styleBase = {
+                      font: { name: "Calibri", sz: 11, color: { rgb: COFFEE_DARK } },
+                      fill: { fgColor: { rgb: bg } },
+                      border: border(BORDER)
+                    };
+                    // A: Ferme
+                    if (ws[`A${i+1}`]) ws[`A${i+1}`].s = { ...styleBase, font: { ...styleBase.font, color: { rgb: COFFEE } }, alignment: { horizontal: "left", vertical: "center", indent: 1 } };
+                    // B: Produit
+                    if (ws[`B${i+1}`]) ws[`B${i+1}`].s = { ...styleBase, font: { ...styleBase.font, bold: true }, alignment: { horizontal: "left", vertical: "center", indent: 1 } };
+                    // C: Unité
+                    if (ws[`C${i+1}`]) ws[`C${i+1}`].s = { ...styleBase, font: { ...styleBase.font, color: { rgb: COFFEE_LIGHT } }, alignment: { horizontal: "center", vertical: "center" } };
+                    // D: Quantité
+                    if (ws[`D${i+1}`]) {
+                      ws[`D${i+1}`].s = { ...styleBase, font: { ...styleBase.font, bold: true }, alignment: { horizontal: "right", vertical: "center", indent: 1 }, numFmt: "#,##0.##" };
+                    }
+                    // E: Prix unit
+                    if (ws[`E${i+1}`]) {
+                      if (r.hasPrice) {
+                        ws[`E${i+1}`].s = { ...styleBase, alignment: { horizontal: "right", vertical: "center", indent: 1 }, numFmt: "#,##0.00" };
+                      } else {
+                        ws[`E${i+1}`].s = { ...styleBase, font: { ...styleBase.font, italic: true, color: { rgb: MUTED } }, alignment: { horizontal: "right", vertical: "center", indent: 1 } };
+                      }
+                    }
+                    // F: Valeur
+                    if (ws[`F${i+1}`]) {
+                      if (r.hasPrice) {
+                        ws[`F${i+1}`].s = { ...styleBase, font: { ...styleBase.font, bold: true }, alignment: { horizontal: "right", vertical: "center", indent: 1 }, numFmt: "#,##0.00" };
+                      } else {
+                        ws[`F${i+1}`].s = { ...styleBase, font: { ...styleBase.font, italic: true, color: { rgb: MUTED } }, alignment: { horizontal: "right", vertical: "center", indent: 1 } };
+                      }
+                    }
+                  }
+
+                  // Total row
+                  const tr = totalRowIdx + 1;
+                  ["A","B","C","D"].forEach(col => {
+                    const cell = ws[`${col}${tr}`];
+                    if (cell) {
+                      cell.s = {
+                        fill: { fgColor: { rgb: CARAMEL } },
+                        border: { top: { style: "medium", color: { rgb: COFFEE_DARK } } }
+                      };
+                    } else {
+                      // Cell may not exist if value is "" — create it
+                      ws[`${col}${tr}`] = { v: "", t: "s", s: {
+                        fill: { fgColor: { rgb: CARAMEL } },
+                        border: { top: { style: "medium", color: { rgb: COFFEE_DARK } } }
+                      }};
+                    }
+                  });
+                  if (ws[`E${tr}`]) {
+                    ws[`E${tr}`].s = {
+                      font: { name: "Calibri", sz: 12, bold: true, color: { rgb: COFFEE_DARK } },
+                      fill: { fgColor: { rgb: CARAMEL } },
+                      alignment: { horizontal: "right", vertical: "center", indent: 1 },
+                      border: { top: { style: "medium", color: { rgb: COFFEE_DARK } } }
+                    };
+                  }
+                  if (ws[`F${tr}`]) {
+                    ws[`F${tr}`].s = {
+                      font: { name: "Calibri", sz: 13, bold: true, color: { rgb: COFFEE_DARK } },
+                      fill: { fgColor: { rgb: CARAMEL } },
+                      alignment: { horizontal: "right", vertical: "center", indent: 1 },
+                      border: { top: { style: "medium", color: { rgb: COFFEE_DARK } } },
+                      numFmt: "#,##0.00"
+                    };
+                  }
+
+                  // === Build & download ===
+                  const wb = XLSXStyle.utils.book_new();
+                  XLSXStyle.utils.book_append_sheet(wb, ws, "Stock");
+                  XLSXStyle.writeFile(wb, `stock-${farmName.replace(/ /g,"-")}-${fileDate}.xlsx`);
                 }}>📊 Export Excel</button>
               </div>
               {/* Modal historique produit */}
