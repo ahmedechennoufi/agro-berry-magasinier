@@ -949,29 +949,111 @@ export default function Dashboard({ user, userInfo }) {
                   const getPrice = (productName) => {
                     const p = priceMap[(productName || "").toUpperCase()];
                     if (p && p.totalQty > 0) return p.totalValue / p.totalQty;
-                    // Fallback : prix de la fiche produit
                     const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
                     return parseFloat(productInfo?.price) || 0;
                   };
-                  exportExcel(
-                    ["Ferme","Produit","Unité","Quantité","Prix unitaire (MAD)","Valeur (MAD)","Date"],
-                    positiveStock.map(s => {
-                      const prix = getPrice(s.product);
-                      const qty = parseFloat(s.qty) || 0;
-                      const valeur = prix * qty;
-                      const hasPrice = prix > 0;
-                      return [
-                        farmName,
-                        s.product,
-                        cleanUnit(s.unit),
-                        s.qty%1===0 ? s.qty : s.qty.toFixed(2),
-                        hasPrice ? Math.round(prix * 100) / 100 : "À renseigner",
-                        hasPrice ? Math.round(valeur * 100) / 100 : "À renseigner",
-                        new Date().toISOString().split("T")[0]
-                      ];
-                    }),
-                    `stock-${farmName.replace(/ /g,"-")}`
-                  );
+
+                  // Préparer les données + totaux
+                  let totalValeur = 0;
+                  let countWithPrice = 0;
+                  let countMissing = 0;
+                  const rowsData = positiveStock.map(s => {
+                    const prix = getPrice(s.product);
+                    const qty = parseFloat(s.qty) || 0;
+                    const valeur = prix * qty;
+                    if (prix > 0) { totalValeur += valeur; countWithPrice++; } else { countMissing++; }
+                    return { product: s.product, unit: cleanUnit(s.unit), qty, prix, valeur, hasPrice: prix > 0 };
+                  });
+
+                  // Formatage nombres (FR)
+                  const fmtMad = (n) => n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const fmtQty = (n) => n%1===0 ? String(n) : n.toFixed(2);
+                  const dateStr = new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+                  const fileDate = new Date().toISOString().split("T")[0];
+
+                  // Palette latte
+                  const COFFEE_DARK = "#3E2C1F";
+                  const COFFEE = "#6B4F35";
+                  const COFFEE_LIGHT = "#8B6F47";
+                  const CARAMEL = "#C9A66B";
+                  const CREAM = "#FFF8E7";
+                  const CREAM_LIGHT = "#F9F5EE";
+                  const BORDER = "#E8DFCE";
+                  const MUTED = "#A89B86";
+
+                  const rowsHtml = rowsData.map((r, i) => {
+                    const bg = i % 2 === 0 ? "#FFFFFF" : CREAM_LIGHT;
+                    const cellBase = `padding:10px 14px;background:${bg};border-bottom:1px solid ${BORDER};font-family:Calibri,Arial,sans-serif;font-size:12px`;
+                    const priceCell = r.hasPrice
+                      ? `<td style="${cellBase};text-align:right;color:${COFFEE_DARK}">${fmtMad(r.prix)}</td>`
+                      : `<td style="${cellBase};text-align:right;color:${MUTED};font-style:italic">À renseigner</td>`;
+                    const valueCell = r.hasPrice
+                      ? `<td style="${cellBase};text-align:right;font-weight:700;color:${COFFEE_DARK}">${fmtMad(r.valeur)}</td>`
+                      : `<td style="${cellBase};text-align:right;color:${MUTED};font-style:italic">À renseigner</td>`;
+                    return `<tr>
+                      <td style="${cellBase};color:${COFFEE};font-weight:500">${farmName}</td>
+                      <td style="${cellBase};color:${COFFEE_DARK};font-weight:600">${r.product}</td>
+                      <td style="${cellBase};text-align:center;color:${COFFEE_LIGHT}">${r.unit}</td>
+                      <td style="${cellBase};text-align:right;font-weight:600;color:${COFFEE_DARK}">${fmtQty(r.qty)}</td>
+                      ${priceCell}
+                      ${valueCell}
+                    </tr>`;
+                  }).join("");
+
+                  const html = `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel">
+<head>
+<meta charset="utf-8">
+<title>Stock ${farmName}</title>
+<!--[if gte mso 9]>
+<xml>
+<x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Stock</x:Name>
+<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook>
+</xml>
+<![endif]-->
+</head>
+<body>
+<table style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif">
+  <tr><td colspan="6" style="padding:24px 20px;background:${COFFEE};color:${CREAM};font-family:Calibri,Arial,sans-serif">
+    <div style="font-size:24px;font-weight:800;letter-spacing:-0.5px">🫐 Agro Berry</div>
+    <div style="font-size:13px;color:#D4B896;margin-top:4px">Rapport de stock — ${farmName}</div>
+  </td></tr>
+  <tr><td colspan="6" style="padding:12px 20px;background:${COFFEE_DARK};color:#D4B896;font-size:12px;letter-spacing:0.3px;text-transform:capitalize;font-family:Calibri,Arial,sans-serif">
+    📅 ${dateStr}
+  </td></tr>
+  <tr><td colspan="6" style="padding:16px 20px;background:${CARAMEL};color:${COFFEE_DARK};font-weight:700;font-size:13px;font-family:Calibri,Arial,sans-serif">
+    📦 ${rowsData.length} produits en stock&nbsp;·&nbsp; 💰 ${fmtMad(totalValeur)} MAD de valeur totale${countMissing > 0 ? `&nbsp;·&nbsp; ⚠️ ${countMissing} produit(s) sans prix` : ""}
+  </td></tr>
+  <tr><td colspan="6" style="height:10px;background:#F5F0E8"></td></tr>
+  <tr style="background:${COFFEE_DARK};color:${CREAM}">
+    <th style="padding:13px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Ferme</th>
+    <th style="padding:13px 14px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Produit</th>
+    <th style="padding:13px 14px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Unité</th>
+    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Quantité</th>
+    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Prix unit. (MAD)</th>
+    <th style="padding:13px 14px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-family:Calibri,Arial,sans-serif">Valeur (MAD)</th>
+  </tr>
+  ${rowsHtml}
+  <tr style="background:${CARAMEL};color:${COFFEE_DARK}">
+    <td colspan="5" style="padding:14px 14px;text-align:right;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:0.06em;font-family:Calibri,Arial,sans-serif;border-top:2px solid ${COFFEE_DARK}">Total Général</td>
+    <td style="padding:14px 14px;text-align:right;font-weight:800;font-size:14px;font-family:Calibri,Arial,sans-serif;border-top:2px solid ${COFFEE_DARK}">${fmtMad(totalValeur)}</td>
+  </tr>
+</table>
+<div style="padding:14px 20px;background:#F5F0E8;color:${COFFEE_LIGHT};font-size:11px;text-align:center;border-top:1px solid ${BORDER};font-family:Calibri,Arial,sans-serif">
+  Agro Berry Magasinier — Généré le ${dateStr}
+</div>
+</body>
+</html>`;
+
+                  const blob = new Blob(["\uFEFF" + html], { type: "application/vnd.ms-excel;charset=utf-8" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `stock-${farmName.replace(/ /g,"-")}-${fileDate}.xls`;
+                  a.click();
+                  URL.revokeObjectURL(url);
                 }}>📊 Export Excel</button>
               </div>
               {/* Modal historique produit */}
