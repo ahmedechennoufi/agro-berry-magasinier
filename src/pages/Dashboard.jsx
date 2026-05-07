@@ -16,6 +16,42 @@ const FARM_CONFIG = {
 
 const FARMS = ["AGRO BERRY 1","AGRO BERRY 2","AGRO BERRY 3"];
 
+// Thèmes Berry — couleur de marque par ferme. Les indicateurs fonctionnels
+// (vert positif / rouge négatif / orange warning / violet transfert) restent
+// inchangés ailleurs dans l'app.
+const FARM_THEMES = {
+  "AGRO BERRY 1": { // Bleu myrtille
+    primary:    "#1e3a8a",
+    bright:     "#3b82f6",
+    dark:       "#1e40af",
+    darkest:    "#1e3a8a",
+    bgLight:    "#eff6ff",
+    bgMedium:   "#dbeafe",
+    rgb:        "30, 58, 138",
+    rgbLight:   "59, 130, 246",
+  },
+  "AGRO BERRY 2": { // Magenta vif
+    primary:    "#a21caf",
+    bright:     "#d946ef",
+    dark:       "#c026d3",
+    darkest:    "#86198f",
+    bgLight:    "#fdf4ff",
+    bgMedium:   "#f5d0fe",
+    rgb:        "192, 38, 211",
+    rgbLight:   "217, 70, 239",
+  },
+  "AGRO BERRY 3": { // Vert sauge / teal
+    primary:    "#0d9488",
+    bright:     "#14b8a6",
+    dark:       "#0f766e",
+    darkest:    "#115e59",
+    bgLight:    "#f0fdfa",
+    bgMedium:   "#ccfbf1",
+    rgb:        "13, 148, 136",
+    rgbLight:   "20, 184, 166",
+  },
+};
+
 const ALL_MENUS = [
   { id:"stock",       label:"Mon Stock",    icon:"◈", color:"#4ade80", farms: null },
   { id:"consumption", label:"Consommation", icon:"◉", color:"#f87171", farms: null },
@@ -536,7 +572,7 @@ export default function Dashboard({ user, userInfo }) {
       return mv.type;
     };
     const typeColor = (mv) => {
-      if (mv.type === "exit") return "#16a34a";
+      if (mv.type === "exit") return theme.primary;
       if (mv.type === "consumption") return "#dc2626";
       if (mv.type === "transfer-out" || mv.type === "transfer-in") return "#7c3aed";
       return "#1d1d1f";
@@ -563,8 +599,8 @@ export default function Dashboard({ user, userInfo }) {
     <title>Mouvements ${farmNm}</title>
     <style>
       body{font-family:'Helvetica Neue',Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f;background:#fff}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid #2ecc71}
-      .logo{font-size:26px;font-weight:900;color:#2ecc71;letter-spacing:-1px}
+      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px;padding-bottom:20px;border-bottom:3px solid ${theme.bright}}
+      .logo{font-size:26px;font-weight:900;color:${theme.bright};letter-spacing:-1px}
       .subtitle{font-size:13px;color:#86868b;margin-top:4px}
       .meta{text-align:right}
       .meta .farm{font-size:18px;font-weight:700;color:#1d1d1f}
@@ -592,9 +628,9 @@ export default function Dashboard({ user, userInfo }) {
       </div>
     </div>
     <div class="stats">
-      <div class="stat" style="background:linear-gradient(135deg,#f0fff4,#dcfce7)">
-        <div class="stat-label" style="color:#15803d">Entrées magasin</div>
-        <div class="stat-value" style="color:#16a34a">${entries}</div>
+      <div class="stat" style="background:linear-gradient(135deg,${theme.bgLight},${theme.bgMedium})">
+        <div class="stat-label" style="color:${theme.darkest}">Entrées magasin</div>
+        <div class="stat-value" style="color:${theme.primary}">${entries}</div>
         <div class="stat-sub" style="color:#86868b">opérations</div>
       </div>
       <div class="stat" style="background:linear-gradient(135deg,#fff5f5,#fee2e2)">
@@ -667,14 +703,27 @@ export default function Dashboard({ user, userInfo }) {
   const now = new Date();
   const dateStr = now.toLocaleDateString("fr-FR", { weekday:"short", day:"2-digit", month:"short", year:"numeric" });
 
+  // Thème de couleur actif basé sur la ferme connectée (Bleu myrtille / Magenta / Sauge)
+  const theme = FARM_THEMES[farmName] || FARM_THEMES["AGRO BERRY 3"];
+
   const css = `
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+    :root {
+      --theme-primary: ${theme.primary};
+      --theme-bright:  ${theme.bright};
+      --theme-dark:    ${theme.dark};
+      --theme-darkest: ${theme.darkest};
+      --theme-bg:      ${theme.bgLight};
+      --theme-bg-med:  ${theme.bgMedium};
+      --theme-rgb:     ${theme.rgb};
+      --theme-rgb-l:   ${theme.rgbLight};
+    }
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family:'Inter',sans-serif; background:#f5f5f7; color:#1d1d1f; }
     .app { display:flex; min-height:100vh; }
 
     /* ── SIDEBAR ── */
-    .sidebar { width:240px; background:linear-gradient(180deg,#2ecc71 0%,#27ae60 100%); display:flex; flex-direction:column; position:fixed; top:0; left:0; height:100vh; z-index:100; transition:width 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow:2px 0 12px rgba(39,174,96,0.15); }
+    .sidebar { width:240px; background:linear-gradient(180deg,var(--theme-bright) 0%,var(--theme-primary) 100%); display:flex; flex-direction:column; position:fixed; top:0; left:0; height:100vh; z-index:100; transition:width 0.3s cubic-bezier(0.4,0,0.2,1); box-shadow:2px 0 12px rgba(var(--theme-rgb),0.15); }
     .sidebar.collapsed { width:68px; }
     .sidebar-header { padding:24px 16px 20px; border-bottom:1px solid rgba(255,255,255,0.15); display:flex; align-items:center; gap:12px; cursor:pointer; }
     .sidebar-logo { width:36px; height:36px; background:rgba(255,255,255,0.2); border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; box-shadow:0 4px 12px rgba(0,0,0,0.1); }
@@ -710,19 +759,19 @@ export default function Dashboard({ user, userInfo }) {
     .topbar-icon { font-size:20px; }
     .topbar-title { font-size:18px; font-weight:600; color:#1d1d1f; letter-spacing:-0.4px; }
     .topbar-sub { font-size:12px; color:#86868b; margin-top:1px; }
-    .date-chip { background:linear-gradient(135deg,#f0fff4,#c6f6d5); border:1px solid rgba(52,199,89,0.3); padding:6px 12px; border-radius:20px; font-size:11px; color:#16a34a; font-weight:600; font-family:'Space Mono',monospace; }
+    .date-chip { background:linear-gradient(135deg,var(--theme-bg),var(--theme-bg-med)); border:1px solid rgba(var(--theme-rgb-l),0.3); padding:6px 12px; border-radius:20px; font-size:11px; color:var(--theme-primary); font-weight:600; font-family:'Space Mono',monospace; }
     .page { padding:28px 32px; animation:fadeIn 0.3s ease; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
 
     /* ── STOCK PAGE ── */
     .stock-header { display:flex; align-items:center; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
     .stock-search { flex:1; min-width:200px; background:#fff; border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:10px 16px; font-size:13px; color:#1d1d1f; font-family:'Inter',sans-serif; outline:none; transition:all 0.2s; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
-    .stock-search:focus { border-color:rgba(52,199,89,0.5); box-shadow:0 0 0 3px rgba(52,199,89,0.1); }
+    .stock-search:focus { border-color:rgba(var(--theme-rgb-l),0.5); box-shadow:0 0 0 3px rgba(var(--theme-rgb-l),0.1); }
     .stock-search::placeholder { color:#86868b; }
-    .refresh-btn { padding:10px 16px; background:#34C759; border:none; border-radius:12px; color:#fff; font-size:13px; cursor:pointer; font-weight:600; font-family:'Inter',sans-serif; transition:all 0.2s; display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(52,199,89,0.3); }
-    .refresh-btn:hover { background:#2ebd52; transform:translateY(-1px); }
+    .refresh-btn { padding:10px 16px; background:var(--theme-primary); border:none; border-radius:12px; color:#fff; font-size:13px; cursor:pointer; font-weight:600; font-family:'Inter',sans-serif; transition:all 0.2s; display:flex; align-items:center; gap:6px; box-shadow:0 2px 8px rgba(var(--theme-rgb-l),0.3); }
+    .refresh-btn:hover { background:var(--theme-dark); transform:translateY(-1px); }
     .stock-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:24px; }
-    .stat-card { background:linear-gradient(135deg,#f0fff4,#dcfce7); border:1px solid rgba(52,199,89,0.2); border-radius:14px; padding:16px 20px; }
+    .stat-card { background:linear-gradient(135deg,var(--theme-bg),var(--theme-bg-med)); border:1px solid rgba(var(--theme-rgb-l),0.2); border-radius:14px; padding:16px 20px; }
     .stat-label { font-size:11px; color:#6e6e73; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; font-weight:600; }
     .stat-value { font-size:26px; font-weight:700; color:#1d1d1f; font-family:'Space Mono',monospace; letter-spacing:-1px; }
     .stat-value.green { color:#16a34a; }
@@ -731,7 +780,7 @@ export default function Dashboard({ user, userInfo }) {
     .stock-table-header { display:grid; grid-template-columns:1fr 80px 120px; padding:12px 20px; background:#f5f5f7; border-bottom:1px solid rgba(0,0,0,0.08); font-size:10px; font-weight:700; color:#6e6e73; text-transform:uppercase; letter-spacing:0.08em; }
     .stock-row { display:grid; grid-template-columns:1fr 80px 120px; padding:13px 20px; border-bottom:1px solid rgba(0,0,0,0.05); transition:background 0.15s; align-items:center; }
     .stock-row:last-child { border-bottom:none; }
-    .stock-row:hover { background:#f0fff4; }
+    .stock-row:hover { background:var(--theme-bg); }
     .stock-product { font-size:13px; font-weight:500; color:#1d1d1f; }
     .stock-unit { font-size:12px; color:#86868b; font-family:'Space Mono',monospace; }
     .stock-qty { font-size:14px; font-weight:700; text-align:right; font-family:'Space Mono',monospace; }
@@ -746,35 +795,35 @@ export default function Dashboard({ user, userInfo }) {
     .form-group.full { grid-column:1/-1; }
     .form-label { font-size:10px; font-weight:700; color:#6e6e73; text-transform:uppercase; letter-spacing:0.08em; }
     .form-input { background:#f5f5f7; border:1px solid rgba(0,0,0,0.1); border-radius:12px; padding:11px 14px; font-size:13px; color:#1d1d1f; font-family:'Inter',sans-serif; outline:none; transition:all 0.2s; width:100%; }
-    .form-input:focus { border-color:rgba(52,199,89,0.5); background:#fff; box-shadow:0 0 0 3px rgba(52,199,89,0.1); }
+    .form-input:focus { border-color:rgba(var(--theme-rgb-l),0.5); background:#fff; box-shadow:0 0 0 3px rgba(var(--theme-rgb-l),0.1); }
     .form-input::placeholder { color:#86868b; }
     .form-input option { background:#fff; color:#1d1d1f; }
     .type-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .type-btn { padding:11px 14px; border-radius:12px; border:1px solid rgba(0,0,0,0.1); background:#f5f5f7; cursor:pointer; font-size:12px; font-weight:500; color:#6e6e73; text-align:left; font-family:'Inter',sans-serif; transition:all 0.2s; display:flex; align-items:center; gap:8px; }
-    .type-btn:hover { border-color:rgba(52,199,89,0.3); color:#1d1d1f; background:#f0fff4; }
-    .type-btn.active { border-color:currentColor; background:#f0fff4; color:#16a34a; }
+    .type-btn:hover { border-color:rgba(var(--theme-rgb-l),0.3); color:#1d1d1f; background:var(--theme-bg); }
+    .type-btn.active { border-color:currentColor; background:var(--theme-bg); color:var(--theme-primary); }
     .product-wrap { position:relative; }
     .product-dropdown { position:absolute; top:calc(100% + 6px); left:0; right:0; background:#fff; border:1px solid rgba(0,0,0,0.1); border-radius:14px; max-height:240px; overflow-y:auto; z-index:200; box-shadow:0 12px 40px rgba(0,0,0,0.12); padding:4px; }
     .product-item { padding:10px 14px; border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:background 0.15s; font-size:13px; }
-    .product-item:hover { background:#f0fff4; }
+    .product-item:hover { background:var(--theme-bg); }
     .product-name { color:#1d1d1f; font-weight:500; }
     .product-meta { font-size:11px; color:#86868b; font-family:'Space Mono',monospace; }
-    .product-add { padding:10px 14px; border-radius:10px; cursor:pointer; color:#16a34a; font-size:12px; font-weight:600; border-top:1px solid rgba(0,0,0,0.06); margin-top:4px; display:flex; align-items:center; gap:8px; transition:background 0.15s; }
-    .product-add:hover { background:#f0fff4; }
+    .product-add { padding:10px 14px; border-radius:10px; cursor:pointer; color:var(--theme-primary); font-size:12px; font-weight:600; border-top:1px solid rgba(0,0,0,0.06); margin-top:4px; display:flex; align-items:center; gap:8px; transition:background 0.15s; }
+    .product-add:hover { background:var(--theme-bg); }
     .back-link { font-size:11px; color:#86868b; background:none; border:none; cursor:pointer; padding:4px 0; text-decoration:underline; font-family:'Inter',sans-serif; }
     .submit-btn { width:100%; padding:14px; border:none; border-radius:13px; font-size:14px; font-weight:600; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s; display:flex; align-items:center; justify-content:center; gap:10px; letter-spacing:-0.2px; margin-top:8px; }
-    .submit-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 8px 24px rgba(52,199,89,0.3); }
+    .submit-btn:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 8px 24px rgba(var(--theme-rgb-l),0.3); }
     .submit-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
     .alert { padding:14px 16px; border-radius:12px; margin-bottom:20px; font-size:13px; font-weight:500; display:flex; align-items:center; gap:10px; }
-    .alert.success { background:linear-gradient(135deg,#f0fff4,#dcfce7); border:1px solid rgba(52,199,89,0.3); color:#16a34a; }
+    .alert.success { background:linear-gradient(135deg,var(--theme-bg),var(--theme-bg-med)); border:1px solid rgba(var(--theme-rgb-l),0.3); color:var(--theme-primary); }
     .alert.error { background:#fff5f5; border:1px solid rgba(220,38,38,0.2); color:#dc2626; }
 
     /* ── MOVEMENTS ── */
     .mv-header { display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap; }
     .mv-filters { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px; }
     .mv-filter-btn { padding:7px 14px; border-radius:20px; border:1px solid rgba(0,0,0,0.1); background:#fff; color:#6e6e73; font-size:12px; font-weight:500; cursor:pointer; font-family:'Inter',sans-serif; transition:all 0.2s; }
-    .mv-filter-btn:hover { border-color:rgba(52,199,89,0.3); color:#16a34a; background:#f0fff4; }
-    .mv-filter-btn.active { background:#34C759; border-color:#34C759; color:#fff; font-weight:600; }
+    .mv-filter-btn:hover { border-color:rgba(var(--theme-rgb-l),0.3); color:var(--theme-primary); background:var(--theme-bg); }
+    .mv-filter-btn.active { background:var(--theme-primary); border-color:var(--theme-primary); color:#fff; font-weight:600; }
     .mv-table { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:16px; overflow:hidden; box-shadow:0 1px 6px rgba(0,0,0,0.04); }
     .mv-table-header { display:grid; grid-template-columns:100px 1fr 100px 80px 120px; padding:12px 20px; background:#f5f5f7; border-bottom:1px solid rgba(0,0,0,0.08); font-size:10px; font-weight:700; color:#6e6e73; text-transform:uppercase; letter-spacing:0.08em; }
     .mv-row { display:grid; grid-template-columns:100px 1fr 100px 80px 120px; padding:13px 20px; border-bottom:1px solid rgba(0,0,0,0.05); transition:background 0.15s; align-items:center; }
@@ -791,7 +840,7 @@ export default function Dashboard({ user, userInfo }) {
     .empty-text { color:#86868b; font-size:14px; }
     ::-webkit-scrollbar { width:4px; }
     ::-webkit-scrollbar-track { background:transparent; }
-    ::-webkit-scrollbar-thumb { background:rgba(52,199,89,0.3); border-radius:4px; }
+    ::-webkit-scrollbar-thumb { background:rgba(var(--theme-rgb-l),0.3); border-radius:4px; }
     .loading-spin { animation:spin 1s linear infinite; display:inline-block; }
     @keyframes spin { to { transform:rotate(360deg); } }
   `;
@@ -892,18 +941,18 @@ export default function Dashboard({ user, userInfo }) {
                   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Stock ${farmName}</title>
                   <style>
                     body{font-family:Arial,sans-serif;margin:0;padding:30px;color:#1d1d1f}
-                    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:2px solid #16a34a}
-                    .logo{font-size:28px;font-weight:800;color:#16a34a;letter-spacing:-1px}
+                    .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:30px;padding-bottom:20px;border-bottom:2px solid ${theme.primary}}
+                    .logo{font-size:28px;font-weight:800;color:${theme.primary};letter-spacing:-1px}
                     .subtitle{font-size:13px;color:#86868b;margin-top:4px}
                     .meta{text-align:right;font-size:12px;color:#86868b}
                     .meta strong{display:block;font-size:15px;color:#1d1d1f;margin-bottom:4px}
                     table{width:100%;border-collapse:collapse;margin-top:10px}
-                    thead tr{background:#f0fff4}
-                    th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#6e6e73;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid #dcfce7}
+                    thead tr{background:${theme.bgLight}}
+                    th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;color:#6e6e73;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid ${theme.bgMedium}}
                     td{padding:10px 14px;font-size:13px;border-bottom:1px solid #f0f0f0}
                     tr:hover td{background:#f9fffe}
                     .footer{margin-top:30px;padding-top:16px;border-top:1px solid #e5e7eb;font-size:11px;color:#86868b;display:flex;justify-content:space-between}
-                    .badge{display:inline-block;background:#dcfce7;color:#16a34a;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}
+                    .badge{display:inline-block;background:${theme.bgMedium};color:${theme.primary};padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:20px}
                     @media print{body{padding:15px}}
                   </style></head><body>
                   <div class="header">
@@ -928,7 +977,7 @@ export default function Dashboard({ user, userInfo }) {
                   w.document.write(html);
                   w.document.close();
                 }}>📄 Export PDF</button>
-                <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   exportExcel(
                     ["Ferme","Produit","Unité","Quantité","Date"],
                     positiveStock.map(s => [farmName, s.product, cleanUnit(s.unit), s.qty%1===0?s.qty:s.qty.toFixed(2), new Date().toISOString().split("T")[0]]),
@@ -959,7 +1008,7 @@ export default function Dashboard({ user, userInfo }) {
                         ) : productMvs.map((mv,i) => {
                           const isEntry = mv.type === "exit";
                           const resolvedType = isEntry ? "entry" : mv.type;
-                          const t = isEntry ? {label:"Entrée magasin",color:"#16a34a",icon:"◍"} : (TYPE_LABELS[mv.type]||{label:mv.type,color:"#94a3b8",icon:"◷"});
+                          const t = isEntry ? {label:"Entrée magasin",color:"var(--theme-primary)",icon:"◍"} : (TYPE_LABELS[mv.type]||{label:mv.type,color:"#94a3b8",icon:"◷"});
                           const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
                           return (
                             <div key={mv.id||i} style={{display:"flex",alignItems:"center",padding:"12px 24px",borderBottom:"1px solid rgba(0,0,0,0.05)",gap:12}}>
@@ -1166,9 +1215,9 @@ export default function Dashboard({ user, userInfo }) {
                 const transfers = farmMovements.filter(m => m.type === "transfer-out" || m.type === "transfer-in");
                 return (
                   <div className="stock-stats" style={{gridTemplateColumns:"repeat(4,1fr)",marginBottom:24}}>
-                    <div className="stat-card" style={{background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(52,199,89,0.2)"}}>
+                    <div className="stat-card" style={{background:"linear-gradient(135deg,var(--theme-bg),var(--theme-bg-med))",border:"1px solid rgba(var(--theme-rgb-l),0.2)"}}>
                       <div className="stat-label">Entrées magasin</div>
-                      <div className="stat-value" style={{fontSize:22,color:"#16a34a"}}>{entries.length}</div>
+                      <div className="stat-value" style={{fontSize:22,color:"var(--theme-primary)"}}>{entries.length}</div>
                       <div style={{fontSize:11,color:"#86868b",marginTop:4}}>opérations</div>
                     </div>
                     <div className="stat-card" style={{background:"linear-gradient(135deg,#fff5f5,#fee2e2)",border:"1px solid rgba(220,38,38,0.2)"}}>
@@ -1202,7 +1251,7 @@ export default function Dashboard({ user, userInfo }) {
                   <button className="refresh-btn" style={{marginLeft:"auto"}} onClick={loadData}>
                     <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                   </button>
-                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                     const typeLabel = (mv) => {
                       if (mv.type==="exit") return "Entree magasin";
                       if (mv.type==="consumption") return "Consommation";
@@ -1287,7 +1336,7 @@ export default function Dashboard({ user, userInfo }) {
                       const isEntryFromMagasin = mv.type === "exit";
                       const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
                       const t = isEntryFromMagasin
-                        ? { label: "Entrée magasin", color: "#16a34a", icon: "◍" }
+                        ? { label: "Entrée magasin", color: "var(--theme-primary)", icon: "◍" }
                         : (TYPE_LABELS[mv.type] || { label: mv.type, color: "#94a3b8", icon: "◷" });
                       const isPlus = resolvedType === "entry" || resolvedType === "transfer-in";
                       let detail = "";
@@ -1406,7 +1455,7 @@ export default function Dashboard({ user, userInfo }) {
                     } catch(e) { alert("Erreur sauvegarde : " + e.message); }
                     setMelangesSaving(false);
                   }}
-                  style={{background: melangesSaved ? "#16a34a" : "#06b6d4", border:"none", color:"#fff", borderRadius:12, padding:"10px 20px", fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", gap:8}}>
+                  style={{background: melangesSaved ? "var(--theme-primary)" : "#06b6d4", border:"none", color:"#fff", borderRadius:12, padding:"10px 20px", fontWeight:600, fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", gap:8}}>
                   {melangesSaving ? "⏳ Enregistrement..." : melangesSaved ? "✅ Enregistré !" : "💾 Valider et Enregistrer"}
                 </button>
               </div>
@@ -1472,7 +1521,7 @@ export default function Dashboard({ user, userInfo }) {
                                     <div key={p.id}
                                       onMouseDown={e => { e.preventDefault(); const updated = { ...melangesConfig, [type]: items.map((it, i) => i === idx ? { ...it, product: p.name.toUpperCase(), _showDrop: false } : it) }; setMelangesConfig(updated); saveMelangesConfig(farmName, updated).catch(console.error); }}
                                       style={{padding:"10px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",fontSize:13,borderBottom:"1px solid rgba(0,0,0,0.05)"}}
-                                      onMouseEnter={e => e.currentTarget.style.background="#f0fff4"}
+                                      onMouseEnter={e => e.currentTarget.style.background="var(--theme-bg)"}
                                       onMouseLeave={e => e.currentTarget.style.background="transparent"}>
                                       <span style={{fontWeight:500,color:"#1d1d1f"}}>{p.name.toUpperCase()}</span>
                                       <span style={{fontSize:11,color:"#86868b"}}>{cleanUnit(p.unit)}</span>
@@ -1497,14 +1546,14 @@ export default function Dashboard({ user, userInfo }) {
                 );
               })}
 
-              <div style={{background:"linear-gradient(135deg,#f0fff4,#dcfce7)",border:"1px solid rgba(34,197,94,0.2)",borderRadius:14,padding:"16px 20px"}}>
-                <div style={{fontWeight:700,color:"#16a34a",fontSize:13,marginBottom:12}}>📊 Aperçu des seuils calculés ×5</div>
+              <div style={{background:"linear-gradient(135deg,var(--theme-bg),var(--theme-bg-med))",border:"1px solid rgba(var(--theme-rgb-l),0.2)",borderRadius:14,padding:"16px 20px"}}>
+                <div style={{fontWeight:700,color:"var(--theme-primary)",fontSize:13,marginBottom:12}}>📊 Aperçu des seuils calculés ×5</div>
                 {Object.entries(calcSeuils(melangesConfig)).length === 0 ? (
                   <div style={{color:"#86868b",fontSize:13}}>Configure tes mélanges ci-dessus pour voir les seuils</div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:8}}>
                     {Object.entries(calcSeuils(melangesConfig)).map(([name, s]) => (
-                      <div key={name} style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"1px solid rgba(34,197,94,0.15)"}}>
+                      <div key={name} style={{background:"#fff",borderRadius:10,padding:"10px 14px",border:"1px solid rgba(var(--theme-rgb-l),0.15)"}}>
                         <div style={{fontSize:12,fontWeight:600,color:"#1d1d1f",marginBottom:2}}>{name}</div>
                         <div style={{fontSize:16,fontWeight:800,color:"#16a34a",fontFamily:"monospace"}}>{s.qty % 1 === 0 ? s.qty : s.qty.toFixed(1)} {s.unit}</div>
                       </div>
@@ -1536,7 +1585,7 @@ export default function Dashboard({ user, userInfo }) {
                     const html = "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Alertes "+farmName+"</title><style>body{font-family:Arial,sans-serif;padding:30px;color:#1d1d1f}table{width:100%;border-collapse:collapse}th{padding:8px 12px;background:#f5f5f7;font-size:10px;text-transform:uppercase;color:#6e6e73;text-align:left;border-bottom:2px solid #e5e7eb}td{padding:8px 12px;font-size:12px;border-bottom:1px solid #f0f0f0}.footer{margin-top:20px;font-size:10px;color:#86868b;display:flex;justify-content:space-between;border-top:1px solid #e5e7eb;padding-top:12px}</style></head><body><h1 style='color:#f59e0b;font-size:20px;margin-bottom:4px'>Alertes Stock</h1><p style='color:#86868b;font-size:12px;margin-bottom:20px'>"+farmName+" - "+date+"</p>"+(critiques.length>0?"<h3 style='color:#dc2626;margin:16px 0 8px'>Produits a commander ("+critiques.length+")</h3><table><thead><tr><th>Produit</th><th>Unite</th><th style='text-align:right'>Stock actuel</th><th style='text-align:right'>Seuil x5</th></tr></thead><tbody>"+makeRows(critiques)+"</tbody></table>":"<p style='color:#16a34a;font-weight:700'>Tous les stocks sont suffisants !</p>")+"<div class='footer'><span>Agro Berry Magasinier</span><span>"+date+"</span></div><script>window.onload=function(){window.print()}<\/script></body></html>";
                     const w=window.open("","_blank"); w.document.write(html); w.document.close();
                   }}>📄 Export PDF</button>
-                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                     const seuils = calcSeuils(melangesConfig);
                     const rows = Object.entries(seuils).map(([name,seuil]) => {
                       const qty = (farmStock.find(x=>x.product.toUpperCase()===name.toUpperCase())?.qty)||0;
@@ -1570,7 +1619,7 @@ export default function Dashboard({ user, userInfo }) {
                 if (critiques.length === 0) return (
                   <div style={{textAlign:"center",padding:"60px 20px"}}>
                     <div style={{fontSize:48,marginBottom:12}}>🟢</div>
-                    <div style={{fontSize:18,fontWeight:700,color:"#16a34a"}}>Tous les stocks sont suffisants !</div>
+                    <div style={{fontSize:18,fontWeight:700,color:"var(--theme-primary)"}}>Tous les stocks sont suffisants !</div>
                     <div style={{fontSize:13,color:"#86868b",marginTop:8}}>Stock suffisant pour 5 mélanges pour tous les produits</div>
                   </div>
                 );
