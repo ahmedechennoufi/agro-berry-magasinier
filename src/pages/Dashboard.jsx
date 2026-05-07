@@ -959,13 +959,14 @@ export default function Dashboard({ user, userInfo }) {
                       const prix = getPrice(s.product);
                       const qty = parseFloat(s.qty) || 0;
                       const valeur = prix * qty;
+                      const hasPrice = prix > 0;
                       return [
                         farmName,
                         s.product,
                         cleanUnit(s.unit),
                         s.qty%1===0 ? s.qty : s.qty.toFixed(2),
-                        Math.round(prix * 100) / 100,
-                        Math.round(valeur * 100) / 100,
+                        hasPrice ? Math.round(prix * 100) / 100 : "À renseigner",
+                        hasPrice ? Math.round(valeur * 100) / 100 : "À renseigner",
                         new Date().toISOString().split("T")[0]
                       ];
                     }),
