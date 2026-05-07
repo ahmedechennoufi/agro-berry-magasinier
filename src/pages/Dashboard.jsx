@@ -342,6 +342,7 @@ export default function Dashboard({ user, userInfo }) {
   const [products, setProducts] = useState([]);
   const [farmStock, setFarmStock] = useState([]);
   const [farmMovements, setFarmMovements] = useState([]);
+  const [allMovements, setAllMovements] = useState([]);
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -377,6 +378,7 @@ export default function Dashboard({ user, userInfo }) {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
+      setAllMovements(data.movements || []);
       setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => {
       console.error('GitHub error:', err);
@@ -387,6 +389,7 @@ export default function Dashboard({ user, userInfo }) {
         setProducts([...(data.products || [])].sort((a,b) => a.name.localeCompare(b.name)));
         setFarmStock(calcFarmStock(data.movements || [], farmName, data[farmKey] || [], data.physicalInventories || []));
         setFarmMovements(getFarmMovements(data.movements || [], farmName));
+        setAllMovements(data.movements || []);
         setMelangesConfig(loadMelanges(data, farmName));
         const ageMin = Math.round((Date.now() - (cached.ts || 0)) / 60000);
         setLoadError(`⚠️ Connexion GitHub indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
@@ -978,11 +981,29 @@ export default function Dashboard({ user, userInfo }) {
                   w.document.close();
                 }}>📄 Export PDF</button>
                 <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
+                  // Calcul prix moyen pondéré par produit depuis les mouvements 'entry' avec un prix
+                  const priceMap = {};
+                  for (const m of allMovements) {
+                    if (m.type !== "entry") continue;
+                    const prix = parseFloat(m.price);
+                    const qty = parseFloat(m.quantity);
+                    if (!prix || !qty || prix <= 0 || qty <= 0) continue;
+                    const key = (m.product || "").toUpperCase();
+                    if (!priceMap[key]) priceMap[key] = { totalValue: 0, totalQty: 0 };
+                    priceMap[key].totalValue += prix * qty;
+                    priceMap[key].totalQty += qty;
+                  }
+                  const getPrice = (productName) => {
+                    const p = priceMap[(productName || "").toUpperCase()];
+                    if (p && p.totalQty > 0) return p.totalValue / p.totalQty;
+                    // Fallback : prix de la fiche produit
+                    const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
+                    return parseFloat(productInfo?.price) || 0;
+                  };
                   exportExcel(
                     ["Ferme","Produit","Unité","Quantité","Prix unitaire (MAD)","Valeur (MAD)","Date"],
                     positiveStock.map(s => {
-                      const productInfo = products.find(p => p.name?.toUpperCase() === s.product?.toUpperCase());
-                      const prix = parseFloat(productInfo?.price) || 0;
+                      const prix = getPrice(s.product);
                       const qty = parseFloat(s.qty) || 0;
                       const valeur = prix * qty;
                       return [
