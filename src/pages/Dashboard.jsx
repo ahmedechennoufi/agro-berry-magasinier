@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signOut } from "firebase/auth";
-import { auth } from "../firebase";
+import { auth, db } from "../firebase";
+import { doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import * as XLSXStyle from "xlsx-js-style";
 
@@ -159,13 +160,15 @@ async function fetchGitHubData() {
 }
 
 async function saveMelangesConfig(farmName, melangesData) {
-  // Sauvegarder dans localStorage immédiatement
+  // Sauvegarder dans localStorage immédiatement (UX : changement visible direct)
   try { 
     localStorage.setItem("melanges_" + farmName, JSON.stringify(melangesData));
     localStorage.setItem("melanges_cache", JSON.stringify(melangesData));
   } catch {}
-  // Sauvegarder sur GitHub avec retry en cas de conflit
-  await githubPutWithRetry(
+  // === Phase 2A : Firestore primaire (rapide, sans 409), GitHub en arrière-plan ===
+  await saveMelangesConfigToFirestore(farmName, melangesData);
+  // GitHub en best-effort (ne bloque pas l'UI)
+  githubPutWithRetry(
     async () => {
       const { data, sha } = await fetchGitHubData();
       if (!data.melangesConfig) data.melangesConfig = {};
@@ -174,7 +177,7 @@ async function saveMelangesConfig(farmName, melangesData) {
     },
     `[CONFIG] melanges ${farmName}`,
     "Erreur sauvegarde config"
-  );
+  ).catch(err => console.warn("⚠️ Sync GitHub melanges a échoué (non-critique):", err?.message || err));
 }
 
 // Helper réutilisable : effectue un PUT GitHub avec retry automatique sur conflit 409
@@ -203,6 +206,56 @@ async function githubPutWithRetry(builderFn, commitMessage, errPrefix = "Erreur 
     }
   }
 }
+
+// ===========================================================================
+// === FIRESTORE WRITES (Phase 2A — primary backend, no 409, no SHA conflict)
+// ===========================================================================
+
+// Écrit 1+ mouvements en Firestore. Le doc id = movement.id (numérique stable).
+// Idempotent : un retry réécrit le même doc (pas de doublon).
+async function saveToFirestore(movements) {
+  const mvArray = Array.isArray(movements) ? movements : [movements];
+  // Génère les IDs si manquants (cohérent avec saveToGitHub)
+  const now = Date.now();
+  const mvWithIds = mvArray.map((mv, i) => ({ ...mv, id: mv.id || (now + i) }));
+  const batch = writeBatch(db);
+  for (const mv of mvWithIds) {
+    batch.set(doc(db, "movements", String(mv.id)), mv);
+  }
+  await batch.commit();
+  return mvWithIds;
+}
+
+// Supprime un mouvement de Firestore par son id numérique.
+async function deleteFromFirestore(mvId) {
+  await deleteDoc(doc(db, "movements", String(mvId)));
+}
+
+// Met à jour partiellement un mouvement (édition date/quantité/etc.) en Firestore.
+async function updateMovementInFirestore(mvId, updates) {
+  await setDoc(doc(db, "movements", String(mvId)), updates, { merge: true });
+}
+
+// Sauvegarde la config mélanges d'une ferme dans Firestore.
+// Schéma : melanges/{farmName} → { sol: {...}, horsSol: {...}, ... }
+async function saveMelangesConfigToFirestore(farmName, melangesData) {
+  await setDoc(doc(db, "melanges", farmName), melangesData, { merge: true });
+}
+
+// Supprime en batch une liste de mouvements (utilisé par la déduplication).
+async function deleteMovementsBatch(mvIds) {
+  if (!mvIds || mvIds.length === 0) return;
+  const batchSize = 400;
+  for (let i = 0; i < mvIds.length; i += batchSize) {
+    const chunk = mvIds.slice(i, i + batchSize);
+    const batch = writeBatch(db);
+    for (const id of chunk) {
+      batch.delete(doc(db, "movements", String(id)));
+    }
+    await batch.commit();
+  }
+}
+
 
 async function saveToGitHub(movements, retries = 6) {
   const mvArray = Array.isArray(movements) ? movements : [movements];
@@ -481,8 +534,12 @@ export default function Dashboard({ user, userInfo }) {
         mouvementsToSave.push(entryFarm);
       }
 
-      await saveToGitHub(mouvementsToSave);
-      loadData(); // Recharger depuis GitHub pour avoir les IDs corrects
+      // === Phase 2A : Firestore primaire (rapide, sans 409), GitHub en arrière-plan ===
+      const savedMvs = await saveToFirestore(mouvementsToSave);
+      // GitHub continue à recevoir les écritures pour la période de transition (1 semaine)
+      // Si GitHub échoue (409 ou autre), on log seulement — l'utilisateur n'est pas bloqué
+      saveToGitHub(savedMvs).catch(err => console.warn("⚠️ Sync GitHub a échoué (non-critique):", err?.message || err));
+      loadData(); // Recharger pour rafraîchir l'affichage
       setSuccess(true); setForm(emptyForm); setSearch(""); setCustomProduct(false);
       setTimeout(() => setSuccess(false), 4000);
     } catch(err) { setError(err.message); }
@@ -493,7 +550,9 @@ export default function Dashboard({ user, userInfo }) {
     if (!window.confirm(`Supprimer ce mouvement ?\n${mv.product} — ${mv.type} — ${mv.quantity} ${mv.unit}`)) return;
     setDeletingId(mv.id);
     try {
-      await deleteFromGitHub(mv.id);
+      // === Phase 2A : Firestore primaire, GitHub en arrière-plan ===
+      await deleteFromFirestore(mv.id);
+      deleteFromGitHub(mv.id).catch(err => console.warn("⚠️ Sync GitHub delete a échoué (non-critique):", err?.message || err));
       setFarmMovements(prev => prev.filter(m => m.id !== mv.id));
       setFarmStock(prev => {
         const updated = [...prev];
@@ -514,34 +573,37 @@ export default function Dashboard({ user, userInfo }) {
     if (!window.confirm("Supprimer les mouvements en double ?\n\nSeul le premier exemplaire de chaque doublon sera conservé.\nCela corrigera les stocks négatifs causés par les doublons.")) return;
     setLoadingStock(true);
     try {
-      let removed = 0;
-      await githubPutWithRetry(
-        async () => {
-          const { data, sha } = await fetchGitHubData();
-          const seen = new Set();
-          const cleaned = [];
-          removed = 0;
-          for (const mv of data.movements) {
-            // Clé unique basée sur contenu (pour détecter les vrais doublons)
-            const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
-            if (seen.has(key)) {
-              removed++;
-            } else {
-              seen.add(key);
-              cleaned.push(mv);
-            }
-          }
-          data.movements = cleaned;
-          return { data, sha };
-        },
-        `[FIX] Suppression doublons`,
-        "Erreur GitHub"
-      );
+      // === Phase 2A : on utilise allMovements (déjà chargé en mémoire depuis GitHub)
+      // pour identifier les doublons, puis on supprime de Firestore + GitHub
+      const seen = new Set();
+      const dupeIds = [];
+      for (const mv of allMovements) {
+        const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
+        if (seen.has(key)) {
+          dupeIds.push(mv.id);
+        } else {
+          seen.add(key);
+        }
+      }
+      const removed = dupeIds.length;
       if (removed === 0) {
         alert("Aucun doublon trouvé !");
         setLoadingStock(false);
         return;
       }
+      // Firestore : suppression batch (rapide, sans 409)
+      await deleteMovementsBatch(dupeIds);
+      // GitHub : best-effort en arrière-plan
+      githubPutWithRetry(
+        async () => {
+          const { data, sha } = await fetchGitHubData();
+          const dupeSet = new Set(dupeIds.map(String));
+          data.movements = data.movements.filter(m => !dupeSet.has(String(m.id)));
+          return { data, sha };
+        },
+        `[FIX] Suppression ${removed} doublons`,
+        "Erreur GitHub"
+      ).catch(err => console.warn("⚠️ Sync GitHub déduplication a échoué (non-critique):", err?.message || err));
       alert(`✅ ${removed} doublon(s) supprimé(s) ! Le stock va se recalculer.`);
       loadData();
     } catch(err) {
@@ -676,22 +738,24 @@ export default function Dashboard({ user, userInfo }) {
     if (!editingMv || !editDate) return;
     setDeletingId(editingMv.id);
     try {
-      await githubPutWithRetry(
+      const updates = {
+        date: editDate,
+        product: editingMv.product,
+        quantity: parseFloat(editingMv.quantity) || editingMv.quantity,
+        unit: editingMv.unit || "KG",
+      };
+      // === Phase 2A : Firestore primaire (rapide, sans 409), GitHub en arrière-plan ===
+      await updateMovementInFirestore(editingMv.id, updates);
+      githubPutWithRetry(
         async () => {
           const { data, sha } = await fetchGitHubData();
           const idx = data.movements.findIndex(m => m.id === editingMv.id);
-          if (idx >= 0) data.movements[idx] = { 
-            ...data.movements[idx], 
-            date: editDate,
-            product: editingMv.product,
-            quantity: parseFloat(editingMv.quantity) || data.movements[idx].quantity,
-            unit: editingMv.unit || data.movements[idx].unit
-          };
+          if (idx >= 0) data.movements[idx] = { ...data.movements[idx], ...updates };
           return { data, sha };
         },
         `[EDIT] ${editingMv.product}`,
         "Erreur GitHub"
-      );
+      ).catch(err => console.warn("⚠️ Sync GitHub edit a échoué (non-critique):", err?.message || err));
       setFarmMovements(prev => prev.map(m => m.id === editingMv.id ? { 
         ...m, date: editDate, product: editingMv.product, 
         quantity: parseFloat(editingMv.quantity)||m.quantity, unit: editingMv.unit||m.unit 
