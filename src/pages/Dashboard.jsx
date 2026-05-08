@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { signOut } from "firebase/auth";
 import { auth, db } from "../firebase";
-import { doc, setDoc, deleteDoc, writeBatch } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, writeBatch, onSnapshot, collection, getDoc, getDocs } from "firebase/firestore";
 import * as XLSX from "xlsx";
 import * as XLSXStyle from "xlsx-js-style";
 
@@ -256,6 +256,33 @@ async function deleteMovementsBatch(mvIds) {
   }
 }
 
+// ===========================================================================
+// === FIRESTORE READS (Phase 2B — primary read source, real-time)
+// ===========================================================================
+
+// Lecture one-shot de toutes les collections nécessaires en parallèle.
+// Retourne un objet `data` au même format que ce que renvoyait fetchGitHubData.
+async function fetchFirestoreData(farmName) {
+  const [movsSnap, prodsSnap, invsSnap, stockInitSnap, melangesSnap] = await Promise.all([
+    getDocs(collection(db, "movements")),
+    getDocs(collection(db, "products")),
+    getDocs(collection(db, "physicalInventories")),
+    getDoc(doc(db, "config", "stockInitial")),
+    getDoc(doc(db, "melanges", farmName)),
+  ]);
+  const stockInitData = stockInitSnap.exists() ? stockInitSnap.data() : {};
+  const melangesForFarm = melangesSnap.exists() ? melangesSnap.data() : null;
+  return {
+    products: prodsSnap.docs.map(d => d.data()),
+    movements: movsSnap.docs.map(d => d.data()),
+    physicalInventories: invsSnap.docs.map(d => d.data()),
+    stockAB1: stockInitData.stockAB1 || [],
+    stockAB2: stockInitData.stockAB2 || [],
+    stockAB3: stockInitData.stockAB3 || [],
+    melangesConfig: melangesForFarm ? { [farmName]: melangesForFarm } : {},
+  };
+}
+
 
 async function saveToGitHub(movements, retries = 6) {
   const mvArray = Array.isArray(movements) ? movements : [movements];
@@ -425,17 +452,20 @@ export default function Dashboard({ user, userInfo }) {
   const destinations = farmConfig.destinations[form.culture] || [];
 
   const [loadError, setLoadError] = useState("");
+
+  // === Phase 2B : lectures Firestore (primaire, temps réel) ===
+  // loadData = refresh manuel one-shot (pour le bouton Actualiser)
   const loadData = () => {
     setLoadingStock(true);
     setLoadError("");
-    fetchGitHubData().then(({ data }) => {
+    fetchFirestoreData(farmName).then((data) => {
       setProducts([...data.products].sort((a,b) => a.name.localeCompare(b.name)));
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
       setAllMovements(data.movements || []);
       setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => {
-      console.error('GitHub error:', err);
+      console.error('Firestore error:', err);
       // Fallback : utiliser le cache local si disponible pour ne pas casser l'app
       const cached = loadDataCache();
       if (cached && cached.data) {
@@ -446,14 +476,70 @@ export default function Dashboard({ user, userInfo }) {
         setAllMovements(data.movements || []);
         setMelangesConfig(loadMelanges(data, farmName));
         const ageMin = Math.round((Date.now() - (cached.ts || 0)) / 60000);
-        setLoadError(`⚠️ Connexion GitHub indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
+        setLoadError(`⚠️ Connexion Firestore indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
       } else {
         setLoadError("⚠️ Erreur chargement : " + err.message + ". Vérifiez votre connexion internet et cliquez Actualiser.");
       }
     }).finally(() => setLoadingStock(false));
   };
 
-  useEffect(() => { loadData(); }, [farmName]);
+  // === Phase 2B : Subscriptions temps réel ===
+  // À chaque changement dans Firestore (ajout/suppression/modif), l'UI se met à jour automatiquement.
+  // Plus besoin de F5 — quand l'admin saisit un mouvement, il apparaît instantanément ici.
+  useEffect(() => {
+    if (!farmName) return;
+    setLoadingStock(true);
+    setLoadError("");
+
+    // État cumulatif des données reçues des différentes subscriptions
+    const cache = { movements: [], products: [], physicalInventories: [], stockInitial: null, melanges: null };
+    const loadedSet = new Set();
+    const expectedKeys = ["movements", "products", "physicalInventories", "stockInitial", "melanges"];
+
+    const updateUI = () => {
+      setProducts([...cache.products].sort((a,b) => a.name.localeCompare(b.name)));
+      const stockInitForFarm = cache.stockInitial?.[farmKey] || [];
+      setFarmStock(calcFarmStock(cache.movements, farmName, stockInitForFarm, cache.physicalInventories || []));
+      setFarmMovements(getFarmMovements(cache.movements, farmName));
+      setAllMovements(cache.movements);
+      const wrappedMelanges = cache.melanges ? { melangesConfig: { [farmName]: cache.melanges } } : { melangesConfig: {} };
+      setMelangesConfig(loadMelanges(wrappedMelanges, farmName));
+      // Stop le spinner dès que les 5 subscriptions ont chargé au moins une fois
+      if (expectedKeys.every(k => loadedSet.has(k))) setLoadingStock(false);
+    };
+
+    const handleErr = (label) => (err) => {
+      console.error(`onSnapshot ${label}:`, err);
+      setLoadError(`⚠️ Erreur Firestore (${label}): ${err.message}. Cliquez Actualiser pour réessayer.`);
+      setLoadingStock(false);
+    };
+
+    const unsubs = [
+      onSnapshot(collection(db, "movements"), snap => {
+        cache.movements = snap.docs.map(d => d.data());
+        loadedSet.add("movements"); updateUI();
+      }, handleErr("movements")),
+      onSnapshot(collection(db, "products"), snap => {
+        cache.products = snap.docs.map(d => d.data());
+        loadedSet.add("products"); updateUI();
+      }, handleErr("products")),
+      onSnapshot(collection(db, "physicalInventories"), snap => {
+        cache.physicalInventories = snap.docs.map(d => d.data());
+        loadedSet.add("physicalInventories"); updateUI();
+      }, handleErr("physicalInventories")),
+      onSnapshot(doc(db, "config", "stockInitial"), snap => {
+        cache.stockInitial = snap.exists() ? snap.data() : {};
+        loadedSet.add("stockInitial"); updateUI();
+      }, handleErr("stockInitial")),
+      onSnapshot(doc(db, "melanges", farmName), snap => {
+        cache.melanges = snap.exists() ? snap.data() : null;
+        loadedSet.add("melanges"); updateUI();
+      }, handleErr("melanges")),
+    ];
+
+    // Cleanup à l'unmount ou au changement de ferme
+    return () => unsubs.forEach(u => { try { u(); } catch {} });
+  }, [farmName, farmKey]);
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
   const filteredStock = farmStock.filter(s => s.product.toLowerCase().includes(stockSearch.toLowerCase()));
