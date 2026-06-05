@@ -401,8 +401,11 @@ function calcFarmStock(movements, farmName, stockInitial, physicalInventories) {
       }
     }
 
-    // Afficher positifs ET négatifs (les négatifs = doublons détectables)
-    return Object.values(stock).filter(s => Math.abs(s.qty) > 0.001).sort((a,b) => a.product.localeCompare(b.product));
+    // Plancher à 0 : le stock ne peut jamais être négatif
+    return Object.values(stock)
+      .map(s => ({ ...s, qty: Math.max(0, s.qty) }))
+      .filter(s => s.qty > 0.001)
+      .sort((a,b) => a.product.localeCompare(b.product));
   } catch(e) {
     console.error("calcFarmStock error:", e);
     return [];
@@ -441,6 +444,7 @@ export default function Dashboard({ user, userInfo }) {
   });
   const [melangesSaving, setMelangesSaving] = useState(false);
   const [melangesSaved, setMelangesSaved] = useState(false);
+  const autoDeduped = useRef(false); // Évite de relancer l'auto-dedup plusieurs fois par session
 
   const farmName = userInfo?.farm || "AGRO BERRY 1";
   const farmConfig = FARM_CONFIG[farmName] || FARM_CONFIG["AGRO BERRY 1"];
@@ -540,6 +544,40 @@ export default function Dashboard({ user, userInfo }) {
     // Cleanup à l'unmount ou au changement de ferme
     return () => unsubs.forEach(u => { try { u(); } catch {} });
   }, [farmName, farmKey]);
+
+  // === Auto-correction des stocks négatifs (doublons) ===
+  // Si un produit passe en négatif (signe de doublon), suppression silencieuse au 1er chargement.
+  useEffect(() => {
+    if (!allMovements.length || autoDeduped.current || loadingStock) return;
+    const hasNegatives = farmStock.some(s => s.qty < 0);
+    if (!hasNegatives) return;
+    autoDeduped.current = true;
+    const seen = new Set();
+    const dupeIds = [];
+    for (const mv of allMovements) {
+      const key = `${mv.farm}|${mv.type}|${mv.product}|${mv.quantity}|${mv.date}|${mv.destination||""}|${mv.culture||""}`;
+      if (seen.has(key)) dupeIds.push(mv.id);
+      else seen.add(key);
+    }
+    if (!dupeIds.length) return;
+    deleteMovementsBatch(dupeIds)
+      .then(() => {
+        // Sync GitHub en arrière-plan (non-bloquant)
+        githubPutWithRetry(
+          async () => {
+            const { data, sha } = await fetchGitHubData();
+            const dupeSet = new Set(dupeIds.map(String));
+            data.movements = data.movements.filter(m => !dupeSet.has(String(m.id)));
+            return { data, sha };
+          },
+          `[AUTO-FIX] Suppression ${dupeIds.length} doublons`,
+          "Erreur GitHub"
+        ).catch(err => console.warn("⚠️ Auto-dedup sync GitHub:", err?.message || err));
+        loadData();
+      })
+      .catch(err => console.warn("⚠️ Auto-dedup Firestore:", err?.message || err));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [farmStock, allMovements, loadingStock]);
 
   const filtered = products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0,25);
   const filteredStock = farmStock.filter(s => s.product.toLowerCase().includes(stockSearch.toLowerCase()));
@@ -1061,12 +1099,8 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="stat-value green">{loadingStock ? "—" : positiveStock.length}</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-label">Négatifs</div>
-                  <div className="stat-value red">{loadingStock ? "—" : negativeStock.length}</div>
-                </div>
-                <div className="stat-card">
                   <div className="stat-label">Total</div>
-                  <div className="stat-value">{loadingStock ? "—" : filteredStock.length}</div>
+                  <div className="stat-value">{loadingStock ? "—" : positiveStock.length}</div>
                 </div>
               </div>
               {loadError && (
@@ -1079,11 +1113,7 @@ export default function Dashboard({ user, userInfo }) {
                 <button className="refresh-btn" onClick={loadData}>
                   <span className={loadingStock ? "loading-spin" : ""}>↻</span> Actualiser
                 </button>
-                {negativeStock.length > 0 && (
-                  <button className="refresh-btn" style={{background:"#f59e0b",border:"none",color:"#fff",fontWeight:600}} onClick={handleDeduplication}>
-                    🧹 Corriger doublons ({negativeStock.length} négatifs)
-                  </button>
-                )}
+
                 <button className="refresh-btn" style={{background:"var(--theme-primary)",border:"none",color:"#fff",fontWeight:600}} onClick={() => {
                   // Calcul prix moyen pondéré par produit depuis les mouvements 'entry' avec un prix
                   const priceMap = {};
@@ -1363,7 +1393,7 @@ export default function Dashboard({ user, userInfo }) {
               ) : (
                 <div className="stock-table">
                   <div className="stock-table-header"><span>Produit</span><span>Unité</span><span style={{textAlign:"right"}}>Quantité</span></div>
-                  {positiveStock.length > 0 && <div className="section-title">✓ En stock ({positiveStock.length})</div>}
+
                   {positiveStock.map(s => {
                     const isLow = s.qty <= 10;
                     return (
@@ -1380,14 +1410,7 @@ export default function Dashboard({ user, userInfo }) {
                       </div>
                     );
                   })}
-                  {negativeStock.length > 0 && <div className="section-title">⚠ Négatifs ({negativeStock.length})</div>}
-                  {negativeStock.map(s => (
-                    <div key={s.product} className="stock-row">
-                      <span className="stock-product">{s.product}</span>
-                      <span className="stock-unit">{cleanUnit(s.unit)}</span>
-                      <span className="stock-qty neg">{s.qty.toFixed(2)}</span>
-                    </div>
-                  ))}
+
                 </div>
               )}
             </div>
