@@ -681,13 +681,16 @@ export default function Dashboard({ user, userInfo }) {
       setFarmStock(prev => {
         const updated = [...prev];
         const idx = updated.findIndex(s => s.product === mv.product);
+        const isEntryFromMagasin = mv.type === "exit";
+        const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
+        const delta = (resolvedType === "entry" || resolvedType === "transfer-in") ? -mv.quantity : mv.quantity;
         if (idx >= 0) {
-          const isEntryFromMagasin = mv.type === "exit";
-          const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
-          const delta = (resolvedType === "entry" || resolvedType === "transfer-in") ? -mv.quantity : mv.quantity;
-          updated[idx] = { ...updated[idx], qty: updated[idx].qty + delta };
+          updated[idx] = { ...updated[idx], qty: Math.max(0, updated[idx].qty + delta) };
+        } else if (delta > 0) {
+          // Produit absent du stock (était à 0 ou filtré) → on le recrée avec la bonne quantité
+          updated.push({ product: mv.product, unit: mv.unit || "KG", qty: delta });
         }
-        return updated.filter(s => Math.abs(s.qty) > 0);
+        return updated.map(s => ({ ...s, qty: Math.max(0, s.qty) })).filter(s => s.qty > 0.001);
       });
     } catch(err) { alert("Erreur suppression : " + err.message); }
     setDeletingId(null);
