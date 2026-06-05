@@ -674,24 +674,14 @@ export default function Dashboard({ user, userInfo }) {
     if (!window.confirm(`Supprimer ce mouvement ?\n${mv.product} — ${mv.type} — ${mv.quantity} ${mv.unit}`)) return;
     setDeletingId(mv.id);
     try {
-      // === Phase 2A : Firestore primaire, GitHub en arrière-plan ===
+      // Supprimer de Firestore (primaire) et GitHub (background)
       await deleteFromFirestore(mv.id);
       deleteFromGitHub(mv.id).catch(err => console.warn("⚠️ Sync GitHub delete a échoué (non-critique):", err?.message || err));
+      // Mettre à jour les listes locales immédiatement
       setFarmMovements(prev => prev.filter(m => m.id !== mv.id));
-      setFarmStock(prev => {
-        const updated = [...prev];
-        const idx = updated.findIndex(s => s.product === mv.product);
-        const isEntryFromMagasin = mv.type === "exit";
-        const resolvedType = isEntryFromMagasin ? "entry" : mv.type;
-        const delta = (resolvedType === "entry" || resolvedType === "transfer-in") ? -mv.quantity : mv.quantity;
-        if (idx >= 0) {
-          updated[idx] = { ...updated[idx], qty: Math.max(0, updated[idx].qty + delta) };
-        } else if (delta > 0) {
-          // Produit absent du stock (était à 0 ou filtré) → on le recrée avec la bonne quantité
-          updated.push({ product: mv.product, unit: mv.unit || "KG", qty: delta });
-        }
-        return updated.map(s => ({ ...s, qty: Math.max(0, s.qty) })).filter(s => s.qty > 0.001);
-      });
+      setAllMovements(prev => prev.filter(m => m.id !== mv.id));
+      // Recharger le stock depuis Firestore pour un recalcul exact
+      loadData();
     } catch(err) { alert("Erreur suppression : " + err.message); }
     setDeletingId(null);
   };
