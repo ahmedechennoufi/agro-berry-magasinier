@@ -65,36 +65,168 @@ const ALL_MENUS = [
   { id:"globalstock", label:"Stock Global",  icon:"🌍", color:"#0ea5e9", farms: null },
 ];
 
-// Stock du magasin central = achats fournisseurs (entry) - livraisons vers fermes (exit),
-// tous mouvements confondus (meme logique que calculateWarehouseStock cote Manager).
-function calcCentralStock(movements) {
-  const stock = {};
-  (movements || []).forEach(m => {
-    const p = m.product;
-    if (!p) return;
-    if (!stock[p]) stock[p] = { product: p, unit: m.unit || "KG", qty: 0 };
-    if (m.type === "entry") stock[p].qty += parseFloat(m.quantity) || 0;
-    else if (m.type === "exit") stock[p].qty -= parseFloat(m.quantity) || 0;
-  });
-  return stock;
-}
-
 // Périodes mensuelles — mêmes bornes que le Manager (Consommation Fermes),
 // pour que les deux apps affichent des chiffres cohérents pour un même mois.
 const MONTH_PERIODS = {
-  'SEPTEMBRE': { start: '2025-08-26', end: '2025-09-25', label: 'Septembre 2025' },
-  'OCTOBRE':   { start: '2025-09-26', end: '2025-10-25', label: 'Octobre 2025' },
-  'NOVEMBRE':  { start: '2025-10-26', end: '2025-11-25', label: 'Novembre 2025' },
-  'DECEMBRE':  { start: '2025-11-26', end: '2025-12-25', label: 'Décembre 2025' },
-  'JANVIER':   { start: '2025-12-26', end: '2026-01-25', label: 'Janvier 2026' },
-  'FEVRIER':   { start: '2026-01-26', end: '2026-02-25', label: 'Février 2026' },
-  'MARS':      { start: '2026-02-26', end: '2026-03-25', label: 'Mars 2026' },
-  'AVRIL':     { start: '2026-03-26', end: '2026-04-25', label: 'Avril 2026' },
-  'MAI':       { start: '2026-04-26', end: '2026-05-25', label: 'Mai 2026' },
-  'JUIN':      { start: '2026-05-26', end: '2026-06-25', label: 'Juin 2026' },
-  'JUILLET':   { start: '2026-06-26', end: '2026-07-25', label: 'Juillet 2026' },
-  'AOUT':      { start: '2026-08-01', end: '2026-08-31', label: 'Août 2026' },
+  'SEPTEMBRE': { start: '2025-08-26', end: '2025-09-25', prevInv: '2025-08-25', label: 'Septembre 2025' },
+  'OCTOBRE':   { start: '2025-09-26', end: '2025-10-25', prevInv: '2025-09-25', label: 'Octobre 2025' },
+  'NOVEMBRE':  { start: '2025-10-26', end: '2025-11-25', prevInv: '2025-10-25', label: 'Novembre 2025' },
+  'DECEMBRE':  { start: '2025-11-26', end: '2025-12-25', prevInv: '2025-11-25', label: 'Décembre 2025' },
+  'JANVIER':   { start: '2025-12-26', end: '2026-01-25', prevInv: '2025-12-25', label: 'Janvier 2026' },
+  'FEVRIER':   { start: '2026-01-26', end: '2026-02-25', prevInv: '2026-01-25', label: 'Février 2026' },
+  'MARS':      { start: '2026-02-26', end: '2026-03-25', prevInv: '2026-02-25', label: 'Mars 2026' },
+  'AVRIL':     { start: '2026-03-26', end: '2026-04-25', prevInv: '2026-03-25', label: 'Avril 2026' },
+  'MAI':       { start: '2026-04-26', end: '2026-05-25', prevInv: '2026-04-25', label: 'Mai 2026' },
+  'JUIN':      { start: '2026-05-26', end: '2026-06-25', prevInv: '2026-05-25', label: 'Juin 2026' },
+  'JUILLET':   { start: '2026-06-26', end: '2026-07-25', prevInv: '2026-06-25', label: 'Juillet 2026' },
+  'AOUT':      { start: '2026-08-01', end: '2026-08-31', prevInv: '2026-07-25', label: 'Août 2026' },
 };
+
+// Rapport combine des 3 fermes (Stock Initial + Entrees - Sorties - Conso = Stock Final),
+// portage fidele de getConsoFermesDataByPeriod cote Manager, adapte a Firestore/JS.
+const GRACE_DAYS = 10;
+function getGlobalConsoReport(movements, products, physicalInventories, stockInitialAll, start, end, prevInv) {
+  const farmKeyMap = { 'AGRO BERRY 1':'AB1', 'AGRO BERRY 2':'AB2', 'AGRO BERRY 3':'AB3' };
+  const farmNameByKey = { 'AB1':'AGRO BERRY 1', 'AB2':'AGRO BERRY 2', 'AB3':'AGRO BERRY 3' };
+
+  const emptyRow = (name, category, unit, price) => ({
+    name, category: category || 'AUTRES', unit: unit || 'KG', price: price || 0,
+    initAB1:0, initAB2:0, initAB3:0,
+    entMAG:0, exitMAG:0, stockMAG:0,
+    entAB1:0, entAB2:0, entAB3:0,
+    transInAB1:0, transInAB2:0, transInAB3:0,
+    exitAB1:0, exitAB2:0, exitAB3:0,
+    transOutAB1:0, transOutAB2:0, transOutAB3:0,
+    sortAB1:0, sortAB2:0, sortAB3:0,
+    consAB1:0, consAB2:0, consAB3:0,
+    finAB1:0, finAB2:0, finAB3:0,
+  });
+
+  const priceMap = {};
+  movements.forEach(m => {
+    if (m.type !== 'entry') return;
+    const prix = parseFloat(m.price), qty = parseFloat(m.quantity);
+    if (!prix || !qty || prix<=0 || qty<=0) return;
+    const key = (m.product||'').toUpperCase();
+    if (!priceMap[key]) priceMap[key] = { v:0, q:0 };
+    priceMap[key].v += prix*qty; priceMap[key].q += qty;
+  });
+  const getPrice = (name) => {
+    const p = priceMap[(name||'').toUpperCase()];
+    if (p && p.q > 0) return p.v / p.q;
+    const info = products.find(pp => pp.name?.toUpperCase() === name?.toUpperCase());
+    return parseFloat(info?.price) || 0;
+  };
+
+  const dataMap = {};
+  products.forEach(p => { dataMap[p.name] = emptyRow(p.name, p.category, p.unit, getPrice(p.name)); });
+
+  // Stock initial: fallback stock de debut de saison (stockAB1/2/3)
+  (stockInitialAll.stockAB1||[]).forEach(s => {
+    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
+    dataMap[s.product].initAB1 = s.quantity || 0;
+    if (s.price) dataMap[s.product].price = s.price;
+  });
+  (stockInitialAll.stockAB2||[]).forEach(s => {
+    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
+    dataMap[s.product].initAB2 = s.quantity || 0;
+  });
+  (stockInitialAll.stockAB3||[]).forEach(s => {
+    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
+    dataMap[s.product].initAB3 = s.quantity || 0;
+  });
+
+  // Inventaire physique (avec fenetre de grace de 10j), remplace le fallback si applicable
+  const graceLimit = (() => { const d = new Date(prevInv); d.setDate(d.getDate()+GRACE_DAYS); return d.toISOString().slice(0,10); })();
+  const latestBefore = {}, earliestAfterGrace = {};
+  (physicalInventories||[]).forEach(inv => {
+    if (!inv.date || !inv.farm || !inv.data) return;
+    const fk = farmKeyMap[inv.farm];
+    if (!fk) return;
+    if (inv.date <= prevInv) { if (!latestBefore[fk] || inv.date > latestBefore[fk].date) latestBefore[fk] = inv; }
+    else if (inv.date <= graceLimit) { if (!earliestAfterGrace[fk] || inv.date < earliestAfterGrace[fk].date) earliestAfterGrace[fk] = inv; }
+  });
+  const latestPerFarm = {};
+  ['AB1','AB2','AB3'].forEach(fk => {
+    const before = latestBefore[fk], after = earliestAfterGrace[fk];
+    if (before && after) {
+      const daysBefore = (new Date(prevInv) - new Date(before.date)) / 86400000;
+      const daysAfter = (new Date(after.date) - new Date(prevInv)) / 86400000;
+      latestPerFarm[fk] = daysAfter <= daysBefore ? { inv: after, adjust: true } : { inv: before, adjust: false };
+    } else if (before) latestPerFarm[fk] = { inv: before, adjust: false };
+    else if (after) latestPerFarm[fk] = { inv: after, adjust: true };
+  });
+  Object.entries(latestPerFarm).forEach(([fk, { inv, adjust }]) => {
+    let adjustments = {};
+    if (adjust) {
+      const farmFullName = farmNameByKey[fk];
+      movements.forEach(m => {
+        if (m.farm !== farmFullName || !m.date) return;
+        if (m.date <= prevInv || m.date > inv.date) return;
+        const p = m.product, qty = parseFloat(m.quantity) || 0;
+        adjustments[p] = (adjustments[p]||0) + ((m.type==='transfer-in'||m.type==='exit') ? qty : (m.type==='transfer-out'||m.type==='consumption') ? -qty : 0);
+      });
+    }
+    Object.entries(inv.data).forEach(([product, qty]) => {
+      const quantity = (parseFloat(qty)||0) - (adjustments[product]||0);
+      if (!dataMap[product]) dataMap[product] = emptyRow(product, null, 'KG', getPrice(product));
+      dataMap[product][`init${fk}`] = quantity;
+    });
+  });
+
+  // Stock magasin cumule AVANT le debut de periode
+  const magBeforePeriod = {};
+  movements.forEach(m => {
+    if (!m.date || m.date >= start || !m.product) return;
+    magBeforePeriod[m.product] = (magBeforePeriod[m.product]||0) + (m.type==='entry' ? (parseFloat(m.quantity)||0) : m.type==='exit' ? -(parseFloat(m.quantity)||0) : 0);
+  });
+
+  // Mouvements de la periode
+  movements.forEach(m => {
+    if (!m.date || m.date < start || m.date > end || !m.product) return;
+    if (!dataMap[m.product]) dataMap[m.product] = emptyRow(m.product, null, m.unit, m.price || getPrice(m.product));
+    const data = dataMap[m.product];
+    const qty = parseFloat(m.quantity) || 0;
+    const farm = m.farm || '';
+    if (m.type === 'entry') data.entMAG += qty;
+    if (m.type === 'transfer-in') {
+      if (farm.includes('1')) { data.entAB1 += qty; data.transInAB1 += qty; }
+      else if (farm.includes('2')) { data.entAB2 += qty; data.transInAB2 += qty; }
+      else if (farm.includes('3')) { data.entAB3 += qty; data.transInAB3 += qty; }
+    }
+    if (m.type === 'exit') {
+      if (farm.includes('1')) data.exitAB1 += qty;
+      else if (farm.includes('2')) data.exitAB2 += qty;
+      else if (farm.includes('3')) data.exitAB3 += qty;
+      data.exitMAG += qty;
+    }
+    if (m.type === 'transfer-out') {
+      if (farm.includes('1')) data.transOutAB1 += qty;
+      else if (farm.includes('2')) data.transOutAB2 += qty;
+      else if (farm.includes('3')) data.transOutAB3 += qty;
+    }
+    if (m.type === 'consumption') {
+      if (farm.includes('1')) data.consAB1 += qty;
+      else if (farm.includes('2')) data.consAB2 += qty;
+      else if (farm.includes('3')) data.consAB3 += qty;
+    }
+  });
+
+  Object.values(dataMap).forEach(data => {
+    data.sortAB1 = data.exitAB1 + data.transOutAB1;
+    data.sortAB2 = data.exitAB2 + data.transOutAB2;
+    data.sortAB3 = data.exitAB3 + data.transOutAB3;
+    data.finAB1 = Math.max(0, data.initAB1 + data.entAB1 + data.exitAB1 - data.transOutAB1 - data.consAB1);
+    data.finAB2 = Math.max(0, data.initAB2 + data.entAB2 + data.exitAB2 - data.transOutAB2 - data.consAB2);
+    data.finAB3 = Math.max(0, data.initAB3 + data.entAB3 + data.exitAB3 - data.transOutAB3 - data.consAB3);
+    data.stockMAG = Math.max(0, (magBeforePeriod[data.name]||0) + data.entMAG - data.exitMAG);
+  });
+
+  return Object.values(dataMap).filter(d => {
+    const initTot = d.initAB1+d.initAB2+d.initAB3, sortTot = d.sortAB1+d.sortAB2+d.sortAB3, consTot = d.consAB1+d.consAB2+d.consAB3, finTot = d.finAB1+d.finAB2+d.finAB3+d.stockMAG;
+    return initTot>0.001 || d.entMAG>0.001 || sortTot>0.001 || consTot>0.001 || finTot>0.001;
+  }).sort((a,b) => a.name.localeCompare(b.name));
+}
 
 // Rapport de consommation pour UNE ferme sur une période donnée.
 // Réutilise calcFarmStock (déjà éprouvé) pour établir le stock initial
@@ -1571,138 +1703,158 @@ export default function Dashboard({ user, userInfo }) {
           })()}
 
           {active === "globalstock" && (() => {
-            const priceMap = {};
-            for (const m of allMovements) {
-              if (m.type !== "entry") continue;
-              const prix = parseFloat(m.price);
-              const qty = parseFloat(m.quantity);
-              if (!prix || !qty || prix <= 0 || qty <= 0) continue;
-              const key = (m.product || "").toUpperCase();
-              if (!priceMap[key]) priceMap[key] = { totalValue: 0, totalQty: 0 };
-              priceMap[key].totalValue += prix * qty;
-              priceMap[key].totalQty += qty;
-            }
-            const getPrice = (productName) => {
-              const p = priceMap[(productName || "").toUpperCase()];
-              if (p && p.totalQty > 0) return p.totalValue / p.totalQty;
-              const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
-              return parseFloat(productInfo?.price) || 0;
-            };
+            const period = MONTH_PERIODS[reportMonth];
+            let rows = getGlobalConsoReport(allMovements, products, physicalInventories, stockInitialAll, period.start, period.end, period.prevInv);
+            if (globalStockSearch) rows = rows.filter(r => r.name.toLowerCase().includes(globalStockSearch.toLowerCase()));
 
-            const central = calcCentralStock(allMovements);
-            const ab1 = calcFarmStock(allMovements, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
-            const ab2 = calcFarmStock(allMovements, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
-            const ab3 = calcFarmStock(allMovements, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
-            const ab1Map = {}; ab1.forEach(s => ab1Map[s.product] = s.qty);
-            const ab2Map = {}; ab2.forEach(s => ab2Map[s.product] = s.qty);
-            const ab3Map = {}; ab3.forEach(s => ab3Map[s.product] = s.qty);
-
-            const productCat = {};
-            products.forEach(p => { productCat[p.name] = p.category || "AUTRES"; });
-
-            const allNames = new Set([
-              ...Object.keys(central), ...Object.keys(ab1Map), ...Object.keys(ab2Map), ...Object.keys(ab3Map)
-            ]);
-            let rows = [...allNames].map(name => {
-              const mag = Math.max(0, central[name]?.qty || 0);
-              const unit = central[name]?.unit || ab1.find(s=>s.product===name)?.unit || ab2.find(s=>s.product===name)?.unit || ab3.find(s=>s.product===name)?.unit || "KG";
-              const a1 = ab1Map[name] || 0, a2 = ab2Map[name] || 0, a3 = ab3Map[name] || 0;
-              return { product: name, unit, category: productCat[name] || "AUTRES", mag, ab1: a1, ab2: a2, ab3: a3, total: mag+a1+a2+a3, price: getPrice(name) };
-            }).filter(r => r.total > 0.001);
-            if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
-            rows.sort((a,b) => a.product.localeCompare(b.product));
-
-            const totals = rows.reduce((t,r) => {
-              t.mag += r.mag*r.price; t.ab1 += r.ab1*r.price; t.ab2 += r.ab2*r.price; t.ab3 += r.ab3*r.price; t.total += r.total*r.price;
+            const totals = rows.reduce((t, d) => {
+              const initTot = d.initAB1+d.initAB2+d.initAB3;
+              const sortTot = d.sortAB1+d.sortAB2+d.sortAB3;
+              const consTot = d.consAB1+d.consAB2+d.consAB3;
+              const finTot = d.stockMAG+d.finAB1+d.finAB2+d.finAB3;
+              t.init += initTot*d.price; t.ent += d.entMAG*d.price; t.sort += sortTot*d.price;
+              t.cons += consTot*d.price; t.fin += finTot*d.price;
               return t;
-            }, { mag:0, ab1:0, ab2:0, ab3:0, total:0 });
+            }, { init:0, ent:0, sort:0, cons:0, fin:0 });
             const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
-            const fmtQty = (n) => (n % 1 === 0 ? n : n.toFixed(2));
+            const fmtQty = (n) => (!n ? "–" : (n % 1 === 0 ? n : n.toFixed(2)));
 
             const handleExportGlobal = () => {
               const dateStr = new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
               const fileDate = new Date().toISOString().split("T")[0];
-              const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
-              const aoa = [];
-              aoa.push(["🫐 Agro Berry", "", "", "", "", "", "", ""]);
-              aoa.push(["Stock Global — Magasin + AB1 + AB2 + AB3", "", "", "", "", "", "", ""]);
-              aoa.push([`📅 ${dateStr}`, "", "", "", "", "", "", ""]);
-              aoa.push([`📦 ${rows.length} produits   💰 ${Math.round(totals.total).toLocaleString("fr-FR")} MAD`, "", "", "", "", "", "", ""]);
-              aoa.push(["", "", "", "", "", "", "", ""]);
-              aoa.push(["Produit","Catégorie","Unité","Prix (MAD)","MAG","AB1","AB2","AB3","TOTAL"]);
-              rows.forEach(r => {
-                aoa.push([r.product, r.category, r.unit, Math.round(r.price*100)/100, r.mag, r.ab1, r.ab2, r.ab3, r.total]);
-              });
-              const totRowIdx = aoa.length;
-              aoa.push(["", "", "", "TOTAL (MAD)", Math.round(totals.mag), Math.round(totals.ab1), Math.round(totals.ab2), Math.round(totals.ab3), Math.round(totals.total)]);
-              const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
-              ws["!cols"] = [{wch:30},{wch:16},{wch:8},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:12}];
-              ws["!merges"] = [
-                {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:2,c:0},e:{r:2,c:8}}, {s:{r:3,c:0},e:{r:3,c:8}}, {s:{r:4,c:0},e:{r:4,c:8}}
+              const BLUE="3B82F6", BLUE_LIGHT="DBEAFE", BLUE_TOT="93C5FD";
+              const GREEN="22C55E", GREEN_LIGHT="DCFCE7", GREEN_TOT="86EFAC";
+              const PURPLE="A855F7", PURPLE_LIGHT="F3E8FF", PURPLE_TOT="D8B4FE";
+              const ORANGE="F97316", ORANGE_LIGHT="FED7AA", ORANGE_TOT="FDBA74";
+              const INDIGO="6366F1", INDIGO_LIGHT="E0E7FF";
+              const GREY="6B7280", GREY_LIGHT="F3F4F6";
+
+              const headerStyle1 = (color) => ({ font:{bold:true,color:{rgb:"FFFFFF"},sz:11}, fill:{fgColor:{rgb:color}}, alignment:{horizontal:"center",vertical:"center"}, border:{top:{style:"thin"},bottom:{style:"thin"},left:{style:"thin"},right:{style:"thin"}} });
+              const headerStyle2 = (color) => ({ font:{bold:true,color:{rgb:"000000"},sz:10}, fill:{fgColor:{rgb:color}}, alignment:{horizontal:"center",vertical:"center"}, border:{top:{style:"thin"},bottom:{style:"thin"},left:{style:"thin"},right:{style:"thin"}} });
+              const cellStyle = (color) => ({ font:{sz:10}, fill:{fgColor:{rgb:color}}, alignment:{horizontal:"right"}, border:{top:{style:"thin",color:{rgb:"DDD"}},bottom:{style:"thin",color:{rgb:"DDD"}},left:{style:"thin",color:{rgb:"DDD"}},right:{style:"thin",color:{rgb:"DDD"}}} });
+              const totStyle = (color) => ({ font:{bold:true,sz:10}, fill:{fgColor:{rgb:color}}, alignment:{horizontal:"right"}, border:{top:{style:"thin"},bottom:{style:"thin"},left:{style:"thin"},right:{style:"thin"}} });
+
+              const ws = {};
+              const mainHeaders = [
+                { v:"Article", s:headerStyle1(GREY) }, { v:"Cat.", s:headerStyle1(GREY) }, { v:"Unité", s:headerStyle1(GREY) }, { v:"Prix", s:headerStyle1(GREY) },
+                { v:"STOCK INITIAL", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) },
+                { v:"ENTRÉES", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) },
+                { v:"SORTIES", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) },
+                { v:"CONSOMMATION", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) },
+                { v:"STOCK FINAL", s:headerStyle1(INDIGO) }, { v:"", s:headerStyle1(INDIGO) }, { v:"", s:headerStyle1(INDIGO) }, { v:"", s:headerStyle1(INDIGO) },
               ];
-              const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
-              for (let c = 0; c < 9; c++) {
-                const cell = ws[XLSXStyle.utils.encode_cell({r:5,c})];
-                if (cell) cell.s = { font:{bold:true,color:{rgb:WHITE},sz:10}, fill:{fgColor:{rgb:COFFEE}}, alignment:{horizontal:c===0?"left":"center",vertical:"center"}, border };
-              }
-              for (let r = 6; r < totRowIdx; r++) {
-                for (let c = 0; c < 9; c++) {
-                  const cell = ws[XLSXStyle.utils.encode_cell({r,c})];
-                  if (cell) cell.s = { font:{sz:9}, fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}}, alignment:{horizontal:c===0?"left":"right",vertical:"center"}, border, numFmt: c>=4?"#,##0.##":undefined };
-                }
-              }
-              for (let c = 0; c < 9; c++) {
-                const cell = ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})];
-                if (cell) cell.s = { font:{bold:true,sz:10,color:{rgb:WHITE}}, fill:{fgColor:{rgb:COFFEE_DARK}}, alignment:{horizontal:c===0?"left":"right",vertical:"center"}, border, numFmt: c>=4?"#,##0":undefined };
-              }
+              mainHeaders.forEach((h,i) => { ws[XLSXStyle.utils.encode_cell({r:0,c:i})] = h; });
+              const subHeaders = [
+                { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) },
+                { v:"AB1", s:headerStyle2(BLUE_LIGHT) }, { v:"AB2", s:headerStyle2(BLUE_LIGHT) }, { v:"AB3", s:headerStyle2(BLUE_LIGHT) }, { v:"TOTAL", s:headerStyle2(BLUE_TOT) },
+                { v:"MAG", s:headerStyle2(GREEN_LIGHT) }, { v:"AB1", s:headerStyle2(GREEN_LIGHT) }, { v:"AB2", s:headerStyle2(GREEN_LIGHT) }, { v:"AB3", s:headerStyle2(GREEN_LIGHT) }, { v:"TOTAL", s:headerStyle2(GREEN_TOT) },
+                { v:"AB1", s:headerStyle2(PURPLE_LIGHT) }, { v:"AB2", s:headerStyle2(PURPLE_LIGHT) }, { v:"AB3", s:headerStyle2(PURPLE_LIGHT) }, { v:"TOTAL", s:headerStyle2(PURPLE_TOT) },
+                { v:"AB1", s:headerStyle2(ORANGE_LIGHT) }, { v:"AB2", s:headerStyle2(ORANGE_LIGHT) }, { v:"AB3", s:headerStyle2(ORANGE_LIGHT) }, { v:"TOTAL", s:headerStyle2(ORANGE_TOT) },
+                { v:"MAG", s:headerStyle2(INDIGO_LIGHT) }, { v:"AB1", s:headerStyle2(INDIGO_LIGHT) }, { v:"AB2", s:headerStyle2(INDIGO_LIGHT) }, { v:"AB3", s:headerStyle2(INDIGO_LIGHT) },
+              ];
+              subHeaders.forEach((h,i) => { ws[XLSXStyle.utils.encode_cell({r:1,c:i})] = h; });
+
+              rows.forEach((d, idx) => {
+                const r = idx + 2;
+                const initTot = d.initAB1+d.initAB2+d.initAB3;
+                const entTot = d.entMAG || 0;
+                const sortTot = (d.sortAB1||0)+(d.sortAB2||0)+(d.sortAB3||0);
+                const consTot = d.consAB1+d.consAB2+d.consAB3;
+                const row = [
+                  { v:d.name, s:{font:{bold:true,sz:10},alignment:{horizontal:"left"}} },
+                  { v:d.category, s:{font:{sz:9,color:{rgb:"666666"}}} },
+                  { v:d.unit, s:{alignment:{horizontal:"center"}} },
+                  { v:d.price, t:'n', s:{numFmt:"0.00",alignment:{horizontal:"right"}} },
+                  { v:d.initAB1||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB2||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB3||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:initTot||'', t:'n', s:totStyle(BLUE_TOT) },
+                  { v:d.entMAG||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB1||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB2||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB3||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:entTot||'', t:'n', s:totStyle(GREEN_TOT) },
+                  { v:d.sortAB1||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:d.sortAB2||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:d.sortAB3||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:sortTot||'', t:'n', s:totStyle(PURPLE_TOT) },
+                  { v:d.consAB1||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:d.consAB2||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:d.consAB3||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:consTot||'', t:'n', s:totStyle(ORANGE_TOT) },
+                  { v:d.stockMAG||'', t:'n', s:cellStyle(INDIGO_LIGHT) }, { v:d.finAB1||'', t:'n', s:cellStyle(INDIGO_LIGHT) }, { v:d.finAB2||'', t:'n', s:cellStyle(INDIGO_LIGHT) }, { v:d.finAB3||'', t:'n', s:cellStyle(INDIGO_LIGHT) },
+                ];
+                row.forEach((cell,i) => { ws[XLSXStyle.utils.encode_cell({r,c:i})] = cell; });
+              });
+
+              ws['!ref'] = XLSXStyle.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length+1,c:24} });
+              ws['!merges'] = [
+                {s:{r:0,c:0},e:{r:1,c:0}}, {s:{r:0,c:1},e:{r:1,c:1}}, {s:{r:0,c:2},e:{r:1,c:2}}, {s:{r:0,c:3},e:{r:1,c:3}},
+                {s:{r:0,c:4},e:{r:0,c:7}}, {s:{r:0,c:8},e:{r:0,c:12}}, {s:{r:0,c:13},e:{r:0,c:16}}, {s:{r:0,c:17},e:{r:0,c:20}}, {s:{r:0,c:21},e:{r:0,c:24}},
+              ];
+              ws['!cols'] = [{wch:28},{wch:14},{wch:7},{wch:8}, ...Array(21).fill({wch:8})];
+              ws['!freeze'] = { xSplit:4, ySplit:2 };
+
               const wb = XLSXStyle.utils.book_new();
-              XLSXStyle.utils.book_append_sheet(wb, ws, "Stock Global");
-              XLSXStyle.writeFile(wb, `stock-global-${fileDate}.xlsx`);
+              XLSXStyle.utils.book_append_sheet(wb, ws, "Conso Fermes");
+              XLSXStyle.writeFile(wb, `conso-fermes-global-${period.label.replace(/ /g,'-')}-${fileDate}.xlsx`);
             };
 
             return (
               <div className="page">
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
                   <div>
-                    <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Stock Global</h2>
-                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Magasin central + AGB1 + AGB2 + AGB3 — instantané, en temps réel</p>
+                    <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Consommation Fermes — Global</h2>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>
+                      AGB1 + AGB2 + AGB3 · Période : <strong>{period.start.split("-").reverse().join("/")}</strong> → <strong>{period.end.split("-").reverse().join("/")}</strong>
+                      {" · "}Stock Initial + Entrées − Sorties − Conso = Stock Final
+                    </p>
                   </div>
-                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select className="form-input" style={{maxWidth:200}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
+                      {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                    </select>
+                    <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                  </div>
                 </div>
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
-                  <div className="stat-card"><div className="stat-label">🏬 Magasin</div><div className="stat-value">{fmt(totals.mag)}</div></div>
-                  <div className="stat-card"><div className="stat-label">🌿 AGB1</div><div className="stat-value">{fmt(totals.ab1)}</div></div>
-                  <div className="stat-card"><div className="stat-label">🫐 AGB2</div><div className="stat-value">{fmt(totals.ab2)}</div></div>
-                  <div className="stat-card"><div className="stat-label">🫐 AGB3</div><div className="stat-value">{fmt(totals.ab3)}</div></div>
-                  <div className="stat-card"><div className="stat-label">📊 TOTAL</div><div className="stat-value">{fmt(totals.total)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📦 Stock Initial</div><div className="stat-value">{fmt(totals.init)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📥 Entrées</div><div className="stat-value green">{fmt(totals.ent)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📤 Sorties</div><div className="stat-value">{fmt(totals.sort)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🔥 Consommation</div><div className="stat-value red">{fmt(totals.cons)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📊 Stock Final</div><div className="stat-value">{fmt(totals.fin)}</div></div>
                 </div>
                 <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
                 {loadingStock ? (
                   <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
                 ) : rows.length === 0 ? (
-                  <div className="empty-state"><div className="empty-icon">🌍</div><div className="empty-text">Aucun produit en stock</div></div>
+                  <div className="empty-state"><div className="empty-icon">🌍</div><div className="empty-text">Aucun mouvement sur cette période</div></div>
                 ) : (
                   <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1400}}>
                       <thead>
+                        <tr style={{background:"#f5f5f7"}}>
+                          <th rowSpan={2} style={{padding:"8px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
+                          <th rowSpan={2} style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Unité</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📦 Stock Initial</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#15803d",background:"#dcfce7"}}>📥 Entrées</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>📤 Sorties</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#c2410c",background:"#fed7aa"}}>🔥 Conso</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#4338ca",background:"#e0e7ff"}}>📊 Stock Final</th>
+                        </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
-                          {["Article","Unité","Magasin","AB1","AB2","AB3","Total"].map((h,i) => (
-                            <th key={h} style={{padding:"10px 14px",textAlign:i===0?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"nowrap"}}>{h}</th>
-                          ))}
+                          {["AB1","AB2","AB3","TOT"].map(h=><th key={"i"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eff6ff"}}>{h}</th>)}
+                          {["MAG","AB1","AB2","AB3"].map(h=><th key={"e"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
+                          {["AB1","AB2","AB3","TOT"].map(h=><th key={"s"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#faf5ff"}}>{h}</th>)}
+                          {["AB1","AB2","AB3","TOT"].map(h=><th key={"c"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fff7ed"}}>{h}</th>)}
+                          {["MAG","AB1","AB2","AB3"].map(h=><th key={"f"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eef2ff"}}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
-                        {rows.map(r => (
-                          <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
-                            <td style={{padding:"10px 14px",fontWeight:600,color:"#1d1d1f"}}>{r.product}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.mag)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab1)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab2)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab3)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{fmtQty(r.total)}</td>
-                          </tr>
-                        ))}
+                        {rows.map(d => {
+                          const initTot = d.initAB1+d.initAB2+d.initAB3;
+                          const sortTot = d.sortAB1+d.sortAB2+d.sortAB3;
+                          const consTot = d.consAB1+d.consAB2+d.consAB3;
+                          const td = (v, bg) => <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:bg}}>{fmtQty(v)}</td>;
+                          return (
+                            <tr key={d.name} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
+                              <td style={{padding:"6px 12px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{d.name}</td>
+                              <td style={{padding:"6px 8px",textAlign:"center",color:"#86868b"}}>{cleanUnit(d.unit)}</td>
+                              {td(d.initAB1,"#eff6ff")}{td(d.initAB2,"#eff6ff")}{td(d.initAB3,"#eff6ff")}{td(initTot,"#dbeafe")}
+                              {td(d.entMAG,"#f0fdf4")}{td(d.entAB1,"#f0fdf4")}{td(d.entAB2,"#f0fdf4")}{td(d.entAB3,"#f0fdf4")}
+                              {td(d.sortAB1,"#faf5ff")}{td(d.sortAB2,"#faf5ff")}{td(d.sortAB3,"#faf5ff")}{td(sortTot,"#f3e8ff")}
+                              {td(d.consAB1,"#fff7ed")}{td(d.consAB2,"#fff7ed")}{td(d.consAB3,"#fff7ed")}{td(consTot,"#fed7aa")}
+                              {td(d.stockMAG,"#eef2ff")}{td(d.finAB1,"#eef2ff")}{td(d.finAB2,"#eef2ff")}{td(d.finAB3,"#eef2ff")}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
