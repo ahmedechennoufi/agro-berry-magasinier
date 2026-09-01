@@ -121,56 +121,18 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
   const dataMap = {};
   products.forEach(p => { dataMap[p.name] = emptyRow(p.name, p.category, p.unit, getPrice(p.name)); });
 
-  // Stock initial: fallback stock de debut de saison (stockAB1/2/3)
-  (stockInitialAll.stockAB1||[]).forEach(s => {
-    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
-    dataMap[s.product].initAB1 = s.quantity || 0;
-    if (s.price) dataMap[s.product].price = s.price;
-  });
-  (stockInitialAll.stockAB2||[]).forEach(s => {
-    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
-    dataMap[s.product].initAB2 = s.quantity || 0;
-  });
-  (stockInitialAll.stockAB3||[]).forEach(s => {
-    if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, s.price);
-    dataMap[s.product].initAB3 = s.quantity || 0;
-  });
-
-  // Inventaire physique (avec fenetre de grace de 10j), remplace le fallback si applicable
-  const graceLimit = (() => { const d = new Date(prevInv); d.setDate(d.getDate()+GRACE_DAYS); return d.toISOString().slice(0,10); })();
-  const latestBefore = {}, earliestAfterGrace = {};
-  (physicalInventories||[]).forEach(inv => {
-    if (!inv.date || !inv.farm || !inv.data) return;
-    const fk = farmKeyMap[inv.farm];
-    if (!fk) return;
-    if (inv.date <= prevInv) { if (!latestBefore[fk] || inv.date > latestBefore[fk].date) latestBefore[fk] = inv; }
-    else if (inv.date <= graceLimit) { if (!earliestAfterGrace[fk] || inv.date < earliestAfterGrace[fk].date) earliestAfterGrace[fk] = inv; }
-  });
-  const latestPerFarm = {};
-  ['AB1','AB2','AB3'].forEach(fk => {
-    const before = latestBefore[fk], after = earliestAfterGrace[fk];
-    if (before && after) {
-      const daysBefore = (new Date(prevInv) - new Date(before.date)) / 86400000;
-      const daysAfter = (new Date(after.date) - new Date(prevInv)) / 86400000;
-      latestPerFarm[fk] = daysAfter <= daysBefore ? { inv: after, adjust: true } : { inv: before, adjust: false };
-    } else if (before) latestPerFarm[fk] = { inv: before, adjust: false };
-    else if (after) latestPerFarm[fk] = { inv: after, adjust: true };
-  });
-  Object.entries(latestPerFarm).forEach(([fk, { inv, adjust }]) => {
-    let adjustments = {};
-    if (adjust) {
-      const farmFullName = farmNameByKey[fk];
-      movements.forEach(m => {
-        if (m.farm !== farmFullName || !m.date) return;
-        if (m.date <= prevInv || m.date > inv.date) return;
-        const p = m.product, qty = parseFloat(m.quantity) || 0;
-        adjustments[p] = (adjustments[p]||0) + ((m.type==='transfer-in'||m.type==='exit') ? qty : (m.type==='transfer-out'||m.type==='consumption') ? -qty : 0);
-      });
-    }
-    Object.entries(inv.data).forEach(([product, qty]) => {
-      const quantity = (parseFloat(qty)||0) - (adjustments[product]||0);
-      if (!dataMap[product]) dataMap[product] = emptyRow(product, null, 'KG', getPrice(product));
-      dataMap[product][`init${fk}`] = quantity;
+  // Stock initial de chaque ferme : on reutilise calcFarmStock (la MEME fonction
+  // que "Mon Stock" et "Rapport Mensuel") sur les mouvements avant le debut de periode.
+  // Garantit des chiffres identiques partout, plutot que de dupliquer une logique
+  // separee (source du bug precedent : Stock Global desynchronise de +137kg/produit).
+  const movementsBeforeStart = movements.filter(m => m.date && m.date < start);
+  ['AGRO BERRY 1','AGRO BERRY 2','AGRO BERRY 3'].forEach(farmName => {
+    const fk = farmKeyMap[farmName];
+    const stockInitForFarm = stockInitialAll[`stock${fk}`] || [];
+    const farmInitArr = calcFarmStock(movementsBeforeStart, farmName, stockInitForFarm, physicalInventories);
+    farmInitArr.forEach(s => {
+      if (!dataMap[s.product]) dataMap[s.product] = emptyRow(s.product, null, s.unit, getPrice(s.product));
+      dataMap[s.product][`init${fk}`] = s.qty;
     });
   });
 
