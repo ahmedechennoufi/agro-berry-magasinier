@@ -91,7 +91,7 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
 
   const emptyRow = (name, category, unit, price) => ({
     name, category: category || 'AUTRES', unit: unit || 'KG', price: price || 0,
-    initAB1:0, initAB2:0, initAB3:0,
+    initMAG:0, initAB1:0, initAB2:0, initAB3:0,
     entMAG:0, exitMAG:0, stockMAG:0,
     entAB1:0, entAB2:0, entAB3:0,
     transInAB1:0, transInAB2:0, transInAB3:0,
@@ -219,11 +219,12 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
     data.finAB1 = Math.max(0, data.initAB1 + data.entAB1 + data.exitAB1 - data.transOutAB1 - data.consAB1);
     data.finAB2 = Math.max(0, data.initAB2 + data.entAB2 + data.exitAB2 - data.transOutAB2 - data.consAB2);
     data.finAB3 = Math.max(0, data.initAB3 + data.entAB3 + data.exitAB3 - data.transOutAB3 - data.consAB3);
+    data.initMAG = Math.max(0, magBeforePeriod[data.name] || 0);
     data.stockMAG = Math.max(0, (magBeforePeriod[data.name]||0) + data.entMAG - data.exitMAG);
   });
 
   return Object.values(dataMap).filter(d => {
-    const initTot = d.initAB1+d.initAB2+d.initAB3, sortTot = d.sortAB1+d.sortAB2+d.sortAB3, consTot = d.consAB1+d.consAB2+d.consAB3, finTot = d.finAB1+d.finAB2+d.finAB3+d.stockMAG;
+    const initTot = d.initMAG+d.initAB1+d.initAB2+d.initAB3, sortTot = d.sortAB1+d.sortAB2+d.sortAB3, consTot = d.consAB1+d.consAB2+d.consAB3, finTot = d.finAB1+d.finAB2+d.finAB3+d.stockMAG;
     return initTot>0.001 || d.entMAG>0.001 || sortTot>0.001 || consTot>0.001 || finTot>0.001;
   }).sort((a,b) => a.name.localeCompare(b.name));
 }
@@ -1708,7 +1709,7 @@ export default function Dashboard({ user, userInfo }) {
             if (globalStockSearch) rows = rows.filter(r => r.name.toLowerCase().includes(globalStockSearch.toLowerCase()));
 
             const totals = rows.reduce((t, d) => {
-              const initTot = d.initAB1+d.initAB2+d.initAB3;
+              const initTot = d.initMAG+d.initAB1+d.initAB2+d.initAB3;
               const sortTot = d.sortAB1+d.sortAB2+d.sortAB3;
               const consTot = d.consAB1+d.consAB2+d.consAB3;
               const finTot = d.stockMAG+d.finAB1+d.finAB2+d.finAB3;
@@ -1737,7 +1738,7 @@ export default function Dashboard({ user, userInfo }) {
               const ws = {};
               const mainHeaders = [
                 { v:"Article", s:headerStyle1(GREY) }, { v:"Cat.", s:headerStyle1(GREY) }, { v:"Unité", s:headerStyle1(GREY) }, { v:"Prix", s:headerStyle1(GREY) },
-                { v:"STOCK INITIAL", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) },
+                { v:"STOCK INITIAL", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) }, { v:"", s:headerStyle1(BLUE) },
                 { v:"ENTRÉES", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) }, { v:"", s:headerStyle1(GREEN) },
                 { v:"SORTIES", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) }, { v:"", s:headerStyle1(PURPLE) },
                 { v:"CONSOMMATION", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) }, { v:"", s:headerStyle1(ORANGE) },
@@ -1746,7 +1747,7 @@ export default function Dashboard({ user, userInfo }) {
               mainHeaders.forEach((h,i) => { ws[XLSXStyle.utils.encode_cell({r:0,c:i})] = h; });
               const subHeaders = [
                 { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) }, { v:"", s:headerStyle2(GREY_LIGHT) },
-                { v:"AB1", s:headerStyle2(BLUE_LIGHT) }, { v:"AB2", s:headerStyle2(BLUE_LIGHT) }, { v:"AB3", s:headerStyle2(BLUE_LIGHT) }, { v:"TOTAL", s:headerStyle2(BLUE_TOT) },
+                { v:"MAG", s:headerStyle2(BLUE_LIGHT) }, { v:"AB1", s:headerStyle2(BLUE_LIGHT) }, { v:"AB2", s:headerStyle2(BLUE_LIGHT) }, { v:"AB3", s:headerStyle2(BLUE_LIGHT) }, { v:"TOTAL", s:headerStyle2(BLUE_TOT) },
                 { v:"MAG", s:headerStyle2(GREEN_LIGHT) }, { v:"AB1", s:headerStyle2(GREEN_LIGHT) }, { v:"AB2", s:headerStyle2(GREEN_LIGHT) }, { v:"AB3", s:headerStyle2(GREEN_LIGHT) }, { v:"TOTAL", s:headerStyle2(GREEN_TOT) },
                 { v:"AB1", s:headerStyle2(PURPLE_LIGHT) }, { v:"AB2", s:headerStyle2(PURPLE_LIGHT) }, { v:"AB3", s:headerStyle2(PURPLE_LIGHT) }, { v:"TOTAL", s:headerStyle2(PURPLE_TOT) },
                 { v:"AB1", s:headerStyle2(ORANGE_LIGHT) }, { v:"AB2", s:headerStyle2(ORANGE_LIGHT) }, { v:"AB3", s:headerStyle2(ORANGE_LIGHT) }, { v:"TOTAL", s:headerStyle2(ORANGE_TOT) },
@@ -1756,7 +1757,7 @@ export default function Dashboard({ user, userInfo }) {
 
               rows.forEach((d, idx) => {
                 const r = idx + 2;
-                const initTot = d.initAB1+d.initAB2+d.initAB3;
+                const initTot = d.initMAG+d.initAB1+d.initAB2+d.initAB3;
                 const entTot = d.entMAG || 0;
                 const sortTot = (d.sortAB1||0)+(d.sortAB2||0)+(d.sortAB3||0);
                 const consTot = d.consAB1+d.consAB2+d.consAB3;
@@ -1765,7 +1766,7 @@ export default function Dashboard({ user, userInfo }) {
                   { v:d.category, s:{font:{sz:9,color:{rgb:"666666"}}} },
                   { v:d.unit, s:{alignment:{horizontal:"center"}} },
                   { v:d.price, t:'n', s:{numFmt:"0.00",alignment:{horizontal:"right"}} },
-                  { v:d.initAB1||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB2||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB3||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:initTot||'', t:'n', s:totStyle(BLUE_TOT) },
+                  { v:d.initMAG||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB1||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB2||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:d.initAB3||'', t:'n', s:cellStyle(BLUE_LIGHT) }, { v:initTot||'', t:'n', s:totStyle(BLUE_TOT) },
                   { v:d.entMAG||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB1||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB2||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:d.entAB3||'', t:'n', s:cellStyle(GREEN_LIGHT) }, { v:entTot||'', t:'n', s:totStyle(GREEN_TOT) },
                   { v:d.sortAB1||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:d.sortAB2||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:d.sortAB3||'', t:'n', s:cellStyle(PURPLE_LIGHT) }, { v:sortTot||'', t:'n', s:totStyle(PURPLE_TOT) },
                   { v:d.consAB1||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:d.consAB2||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:d.consAB3||'', t:'n', s:cellStyle(ORANGE_LIGHT) }, { v:consTot||'', t:'n', s:totStyle(ORANGE_TOT) },
@@ -1774,12 +1775,12 @@ export default function Dashboard({ user, userInfo }) {
                 row.forEach((cell,i) => { ws[XLSXStyle.utils.encode_cell({r,c:i})] = cell; });
               });
 
-              ws['!ref'] = XLSXStyle.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length+1,c:24} });
+              ws['!ref'] = XLSXStyle.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length+1,c:25} });
               ws['!merges'] = [
                 {s:{r:0,c:0},e:{r:1,c:0}}, {s:{r:0,c:1},e:{r:1,c:1}}, {s:{r:0,c:2},e:{r:1,c:2}}, {s:{r:0,c:3},e:{r:1,c:3}},
-                {s:{r:0,c:4},e:{r:0,c:7}}, {s:{r:0,c:8},e:{r:0,c:12}}, {s:{r:0,c:13},e:{r:0,c:16}}, {s:{r:0,c:17},e:{r:0,c:20}}, {s:{r:0,c:21},e:{r:0,c:24}},
+                {s:{r:0,c:4},e:{r:0,c:8}}, {s:{r:0,c:9},e:{r:0,c:13}}, {s:{r:0,c:14},e:{r:0,c:17}}, {s:{r:0,c:18},e:{r:0,c:21}}, {s:{r:0,c:22},e:{r:0,c:25}},
               ];
-              ws['!cols'] = [{wch:28},{wch:14},{wch:7},{wch:8}, ...Array(21).fill({wch:8})];
+              ws['!cols'] = [{wch:28},{wch:14},{wch:7},{wch:8}, ...Array(22).fill({wch:8})];
               ws['!freeze'] = { xSplit:4, ySplit:2 };
 
               const wb = XLSXStyle.utils.book_new();
@@ -1823,14 +1824,14 @@ export default function Dashboard({ user, userInfo }) {
                         <tr style={{background:"#f5f5f7"}}>
                           <th rowSpan={2} style={{padding:"8px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
                           <th rowSpan={2} style={{padding:"8px 12px",textAlign:"center",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Unité</th>
-                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📦 Stock Initial</th>
+                          <th colSpan={5} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📦 Stock Initial</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#15803d",background:"#dcfce7"}}>📥 Entrées</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>📤 Sorties</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#c2410c",background:"#fed7aa"}}>🔥 Conso</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#4338ca",background:"#e0e7ff"}}>📊 Stock Final</th>
                         </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
-                          {["AB1","AB2","AB3","TOT"].map(h=><th key={"i"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eff6ff"}}>{h}</th>)}
+                          {["MAG","AB1","AB2","AB3","TOT"].map(h=><th key={"i"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eff6ff"}}>{h}</th>)}
                           {["MAG","AB1","AB2","AB3"].map(h=><th key={"e"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
                           {["AB1","AB2","AB3","TOT"].map(h=><th key={"s"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#faf5ff"}}>{h}</th>)}
                           {["AB1","AB2","AB3","TOT"].map(h=><th key={"c"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fff7ed"}}>{h}</th>)}
@@ -1839,7 +1840,7 @@ export default function Dashboard({ user, userInfo }) {
                       </thead>
                       <tbody>
                         {rows.map(d => {
-                          const initTot = d.initAB1+d.initAB2+d.initAB3;
+                          const initTot = d.initMAG+d.initAB1+d.initAB2+d.initAB3;
                           const sortTot = d.sortAB1+d.sortAB2+d.sortAB3;
                           const consTot = d.consAB1+d.consAB2+d.consAB3;
                           const td = (v, bg) => <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:bg}}>{fmtQty(v)}</td>;
@@ -1847,7 +1848,7 @@ export default function Dashboard({ user, userInfo }) {
                             <tr key={d.name} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
                               <td style={{padding:"6px 12px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{d.name}</td>
                               <td style={{padding:"6px 8px",textAlign:"center",color:"#86868b"}}>{cleanUnit(d.unit)}</td>
-                              {td(d.initAB1,"#eff6ff")}{td(d.initAB2,"#eff6ff")}{td(d.initAB3,"#eff6ff")}{td(initTot,"#dbeafe")}
+                              {td(d.initMAG,"#eff6ff")}{td(d.initAB1,"#eff6ff")}{td(d.initAB2,"#eff6ff")}{td(d.initAB3,"#eff6ff")}{td(initTot,"#dbeafe")}
                               {td(d.entMAG,"#f0fdf4")}{td(d.entAB1,"#f0fdf4")}{td(d.entAB2,"#f0fdf4")}{td(d.entAB3,"#f0fdf4")}
                               {td(d.sortAB1,"#faf5ff")}{td(d.sortAB2,"#faf5ff")}{td(d.sortAB3,"#faf5ff")}{td(sortTot,"#f3e8ff")}
                               {td(d.consAB1,"#fff7ed")}{td(d.consAB2,"#fff7ed")}{td(d.consAB3,"#fff7ed")}{td(consTot,"#fed7aa")}
