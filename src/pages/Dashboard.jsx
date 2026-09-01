@@ -61,7 +61,58 @@ const ALL_MENUS = [
   { id:"history",     label:"Mouvements",   icon:"◷", color:"#94a3b8", farms: null },
   { id:"alerts",      label:"Alertes",      icon:"⚠", color:"#f59e0b", farms: null },
   { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
+  { id:"report",      label:"Rapport Mensuel", icon:"📊", color:"#8b5cf6", farms: null },
 ];
+
+// Périodes mensuelles — mêmes bornes que le Manager (Consommation Fermes),
+// pour que les deux apps affichent des chiffres cohérents pour un même mois.
+const MONTH_PERIODS = {
+  'SEPTEMBRE': { start: '2025-08-26', end: '2025-09-25', label: 'Septembre 2025' },
+  'OCTOBRE':   { start: '2025-09-26', end: '2025-10-25', label: 'Octobre 2025' },
+  'NOVEMBRE':  { start: '2025-10-26', end: '2025-11-25', label: 'Novembre 2025' },
+  'DECEMBRE':  { start: '2025-11-26', end: '2025-12-25', label: 'Décembre 2025' },
+  'JANVIER':   { start: '2025-12-26', end: '2026-01-25', label: 'Janvier 2026' },
+  'FEVRIER':   { start: '2026-01-26', end: '2026-02-25', label: 'Février 2026' },
+  'MARS':      { start: '2026-02-26', end: '2026-03-25', label: 'Mars 2026' },
+  'AVRIL':     { start: '2026-03-26', end: '2026-04-25', label: 'Avril 2026' },
+  'MAI':       { start: '2026-04-26', end: '2026-05-25', label: 'Mai 2026' },
+  'JUIN':      { start: '2026-05-26', end: '2026-06-25', label: 'Juin 2026' },
+  'JUILLET':   { start: '2026-06-26', end: '2026-07-25', label: 'Juillet 2026' },
+  'AOUT':      { start: '2026-08-01', end: '2026-08-31', label: 'Août 2026' },
+};
+
+// Rapport de consommation pour UNE ferme sur une période donnée.
+// Réutilise calcFarmStock (déjà éprouvé) pour établir le stock initial
+// = stock de la ferme calculé juste avant `start`, puis additionne les
+// mouvements de la période pour obtenir Entrées / Sorties / Consommation / Stock Final.
+function getFarmConsumptionReport(movements, farmName, physicalInventories, start, end) {
+  const movementsBeforeStart = (movements || []).filter(m => m.date && m.date < start);
+  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, [], physicalInventories);
+
+  const rows = {};
+  const ensure = (product, unit) => {
+    if (!rows[product]) rows[product] = { product, unit: unit || "KG", init: 0, ent: 0, sort: 0, cons: 0 };
+    return rows[product];
+  };
+  initStockArr.forEach(s => { ensure(s.product, s.unit).init = s.qty; });
+
+  (movements || []).forEach(m => {
+    if (!m.date || m.date < start || m.date > end) return;
+    if (m.farm !== farmName) return;
+    const p = m.product;
+    if (!p) return;
+    const r = ensure(p, m.unit);
+    const qty = parseFloat(m.quantity) || 0;
+    if (m.type === "exit" || m.type === "transfer-in") r.ent += qty;
+    else if (m.type === "transfer-out") r.sort += qty;
+    else if (m.type === "consumption") r.cons += qty;
+  });
+
+  return Object.values(rows)
+    .map(r => ({ ...r, final: Math.max(0, r.init + r.ent - r.sort - r.cons) }))
+    .filter(r => r.init > 0.001 || r.ent > 0.001 || r.sort > 0.001 || r.cons > 0.001 || r.final > 0.001)
+    .sort((a,b) => a.product.localeCompare(b.product));
+}
 
 // Charger/calculer les mélanges depuis les données GitHub ou localStorage
 const loadMelanges = (githubData, farmName) => {
@@ -427,6 +478,8 @@ export default function Dashboard({ user, userInfo }) {
   const [farmStock, setFarmStock] = useState([]);
   const [farmMovements, setFarmMovements] = useState([]);
   const [allMovements, setAllMovements] = useState([]);
+  const [physicalInventories, setPhysicalInventories] = useState([]);
+  const [reportMonth, setReportMonth] = useState("AOUT");
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -467,6 +520,7 @@ export default function Dashboard({ user, userInfo }) {
       setFarmStock(calcFarmStock(data.movements, farmName, data[farmKey] || [], data.physicalInventories || []));
       setFarmMovements(getFarmMovements(data.movements, farmName));
       setAllMovements(data.movements || []);
+      setPhysicalInventories(data.physicalInventories || []);
       setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => {
       console.error('Firestore error:', err);
@@ -478,6 +532,7 @@ export default function Dashboard({ user, userInfo }) {
         setFarmStock(calcFarmStock(data.movements || [], farmName, data[farmKey] || [], data.physicalInventories || []));
         setFarmMovements(getFarmMovements(data.movements || [], farmName));
         setAllMovements(data.movements || []);
+        setPhysicalInventories(data.physicalInventories || []);
         setMelangesConfig(loadMelanges(data, farmName));
         const ageMin = Math.round((Date.now() - (cached.ts || 0)) / 60000);
         setLoadError(`⚠️ Connexion Firestore indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
@@ -506,6 +561,7 @@ export default function Dashboard({ user, userInfo }) {
       setFarmStock(calcFarmStock(cache.movements, farmName, stockInitForFarm, cache.physicalInventories || []));
       setFarmMovements(getFarmMovements(cache.movements, farmName));
       setAllMovements(cache.movements);
+      setPhysicalInventories(cache.physicalInventories || []);
       const wrappedMelanges = cache.melanges ? { melangesConfig: { [farmName]: cache.melanges } } : { melangesConfig: {} };
       setMelangesConfig(loadMelanges(wrappedMelanges, farmName));
       // Stop le spinner dès que les 5 subscriptions ont chargé au moins une fois
@@ -1409,8 +1465,93 @@ export default function Dashboard({ user, userInfo }) {
             </div>
           )}
 
+          {active === "report" && (() => {
+            const period = MONTH_PERIODS[reportMonth];
+            const priceMap = {};
+            for (const m of allMovements) {
+              if (m.type !== "entry") continue;
+              const prix = parseFloat(m.price);
+              const qty = parseFloat(m.quantity);
+              if (!prix || !qty || prix <= 0 || qty <= 0) continue;
+              const key = (m.product || "").toUpperCase();
+              if (!priceMap[key]) priceMap[key] = { totalValue: 0, totalQty: 0 };
+              priceMap[key].totalValue += prix * qty;
+              priceMap[key].totalQty += qty;
+            }
+            const getPrice = (productName) => {
+              const p = priceMap[(productName || "").toUpperCase()];
+              if (p && p.totalQty > 0) return p.totalValue / p.totalQty;
+              const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
+              return parseFloat(productInfo?.price) || 0;
+            };
+            const rows = getFarmConsumptionReport(allMovements, farmName, physicalInventories, period.start, period.end)
+              .filter(r => !stockSearch || r.product.toLowerCase().includes(stockSearch.toLowerCase()));
+            const totals = rows.reduce((t, r) => {
+              const prix = getPrice(r.product);
+              t.init += r.init * prix; t.ent += r.ent * prix; t.sort += r.sort * prix;
+              t.cons += r.cons * prix; t.final += r.final * prix;
+              return t;
+            }, { init:0, ent:0, sort:0, cons:0, final:0 });
+            const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
+            const fmtQty = (n) => (n % 1 === 0 ? n : n.toFixed(2));
+            return (
+              <div className="page">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
+                  <div>
+                    <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>📊 Rapport Mensuel — {farmShort}</h2>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>
+                      Période : <strong>{period.start.split("-").reverse().join("/")}</strong> → <strong>{period.end.split("-").reverse().join("/")}</strong>
+                      {" · "}Stock Initial + Entrées − Sorties − Conso = Stock Final
+                    </p>
+                  </div>
+                  <select className="form-input" style={{maxWidth:220}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
+                    {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                  </select>
+                </div>
+                <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+                  <div className="stat-card"><div className="stat-label">📦 Stock Initial</div><div className="stat-value">{fmt(totals.init)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📥 Entrées</div><div className="stat-value green">{fmt(totals.ent)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📤 Sorties</div><div className="stat-value">{fmt(totals.sort)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🔥 Consommation</div><div className="stat-value red">{fmt(totals.cons)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📊 Stock Final</div><div className="stat-value">{fmt(totals.final)}</div></div>
+                </div>
+                <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={stockSearch} onChange={e => setStockSearch(e.target.value)} />
+                {loadingStock ? (
+                  <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
+                ) : rows.length === 0 ? (
+                  <div className="empty-state"><div className="empty-icon">📊</div><div className="empty-text">Aucun mouvement sur cette période</div></div>
+                ) : (
+                  <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                      <thead>
+                        <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
+                          {["Article","Unité","Stock Initial","Entrées","Sorties","Consommation","Stock Final"].map((h,i) => (
+                            <th key={h} style={{padding:"10px 14px",textAlign:i===0?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => (
+                          <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
+                            <td style={{padding:"10px 14px",fontWeight:600,color:"#1d1d1f"}}>{r.product}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.init)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.ent>0?"#16a34a":"#c7c7cc"}}>{r.ent>0?"+":""}{fmtQty(r.ent)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.sort>0?"#dc2626":"#c7c7cc"}}>{r.sort>0?"-":""}{fmtQty(r.sort)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.cons>0?"#dc2626":"#c7c7cc"}}>{r.cons>0?"-":""}{fmtQty(r.cons)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{fmtQty(r.final)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* FORMS */}
-          {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && (
+          {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && active !== "report" && (
             <div className="page">
               <div className="form-card">
                 {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? " · Entrée créée automatiquement sur "+form.toFarm.replace("AGRO BERRY ","AGB")+"." : ""}</div>}
