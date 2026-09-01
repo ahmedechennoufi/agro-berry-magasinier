@@ -233,9 +233,9 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
 // Réutilise calcFarmStock (déjà éprouvé) pour établir le stock initial
 // = stock de la ferme calculé juste avant `start`, puis additionne les
 // mouvements de la période pour obtenir Entrées / Sorties / Consommation / Stock Final.
-function getFarmConsumptionReport(movements, farmName, physicalInventories, start, end) {
+function getFarmConsumptionReport(movements, farmName, physicalInventories, stockInitialForFarm, start, end) {
   const movementsBeforeStart = (movements || []).filter(m => m.date && m.date < start);
-  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, [], physicalInventories);
+  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, stockInitialForFarm || [], physicalInventories);
 
   const rows = {};
   const ensure = (product, unit) => {
@@ -1637,7 +1637,7 @@ export default function Dashboard({ user, userInfo }) {
               const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
               return parseFloat(productInfo?.price) || 0;
             };
-            const rows = getFarmConsumptionReport(allMovements, farmName, physicalInventories, period.start, period.end)
+            const rows = getFarmConsumptionReport(allMovements, farmName, physicalInventories, stockInitialAll[farmKey] || [], period.start, period.end)
               .filter(r => !stockSearch || r.product.toLowerCase().includes(stockSearch.toLowerCase()));
             const totals = rows.reduce((t, r) => {
               const prix = getPrice(r.product);
