@@ -62,7 +62,22 @@ const ALL_MENUS = [
   { id:"alerts",      label:"Alertes",      icon:"⚠", color:"#f59e0b", farms: null },
   { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
   { id:"report",      label:"Rapport Mensuel", icon:"📊", color:"#8b5cf6", farms: null },
+  { id:"globalstock", label:"Stock Global",  icon:"🌍", color:"#0ea5e9", farms: null },
 ];
+
+// Stock du magasin central = achats fournisseurs (entry) - livraisons vers fermes (exit),
+// tous mouvements confondus (meme logique que calculateWarehouseStock cote Manager).
+function calcCentralStock(movements) {
+  const stock = {};
+  (movements || []).forEach(m => {
+    const p = m.product;
+    if (!p) return;
+    if (!stock[p]) stock[p] = { product: p, unit: m.unit || "KG", qty: 0 };
+    if (m.type === "entry") stock[p].qty += parseFloat(m.quantity) || 0;
+    else if (m.type === "exit") stock[p].qty -= parseFloat(m.quantity) || 0;
+  });
+  return stock;
+}
 
 // Périodes mensuelles — mêmes bornes que le Manager (Consommation Fermes),
 // pour que les deux apps affichent des chiffres cohérents pour un même mois.
@@ -479,7 +494,9 @@ export default function Dashboard({ user, userInfo }) {
   const [farmMovements, setFarmMovements] = useState([]);
   const [allMovements, setAllMovements] = useState([]);
   const [physicalInventories, setPhysicalInventories] = useState([]);
+  const [stockInitialAll, setStockInitialAll] = useState({});
   const [reportMonth, setReportMonth] = useState("AOUT");
+  const [globalStockSearch, setGlobalStockSearch] = useState("");
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
@@ -521,6 +538,7 @@ export default function Dashboard({ user, userInfo }) {
       setFarmMovements(getFarmMovements(data.movements, farmName));
       setAllMovements(data.movements || []);
       setPhysicalInventories(data.physicalInventories || []);
+      setStockInitialAll({ stockAB1: data.stockAB1 || [], stockAB2: data.stockAB2 || [], stockAB3: data.stockAB3 || [] });
       setMelangesConfig(loadMelanges(data, farmName));
     }).catch(err => {
       console.error('Firestore error:', err);
@@ -533,6 +551,7 @@ export default function Dashboard({ user, userInfo }) {
         setFarmMovements(getFarmMovements(data.movements || [], farmName));
         setAllMovements(data.movements || []);
         setPhysicalInventories(data.physicalInventories || []);
+        setStockInitialAll({ stockAB1: data.stockAB1 || [], stockAB2: data.stockAB2 || [], stockAB3: data.stockAB3 || [] });
         setMelangesConfig(loadMelanges(data, farmName));
         const ageMin = Math.round((Date.now() - (cached.ts || 0)) / 60000);
         setLoadError(`⚠️ Connexion Firestore indisponible. Affichage du cache (il y a ${ageMin} min). Cliquez Actualiser pour réessayer.`);
@@ -562,6 +581,7 @@ export default function Dashboard({ user, userInfo }) {
       setFarmMovements(getFarmMovements(cache.movements, farmName));
       setAllMovements(cache.movements);
       setPhysicalInventories(cache.physicalInventories || []);
+      setStockInitialAll({ stockAB1: cache.stockInitial?.stockAB1 || [], stockAB2: cache.stockInitial?.stockAB2 || [], stockAB3: cache.stockInitial?.stockAB3 || [] });
       const wrappedMelanges = cache.melanges ? { melangesConfig: { [farmName]: cache.melanges } } : { melangesConfig: {} };
       setMelangesConfig(loadMelanges(wrappedMelanges, farmName));
       // Stop le spinner dès que les 5 subscriptions ont chargé au moins une fois
@@ -1550,8 +1570,149 @@ export default function Dashboard({ user, userInfo }) {
             );
           })()}
 
+          {active === "globalstock" && (() => {
+            const priceMap = {};
+            for (const m of allMovements) {
+              if (m.type !== "entry") continue;
+              const prix = parseFloat(m.price);
+              const qty = parseFloat(m.quantity);
+              if (!prix || !qty || prix <= 0 || qty <= 0) continue;
+              const key = (m.product || "").toUpperCase();
+              if (!priceMap[key]) priceMap[key] = { totalValue: 0, totalQty: 0 };
+              priceMap[key].totalValue += prix * qty;
+              priceMap[key].totalQty += qty;
+            }
+            const getPrice = (productName) => {
+              const p = priceMap[(productName || "").toUpperCase()];
+              if (p && p.totalQty > 0) return p.totalValue / p.totalQty;
+              const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
+              return parseFloat(productInfo?.price) || 0;
+            };
+
+            const central = calcCentralStock(allMovements);
+            const ab1 = calcFarmStock(allMovements, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
+            const ab2 = calcFarmStock(allMovements, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
+            const ab3 = calcFarmStock(allMovements, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
+            const ab1Map = {}; ab1.forEach(s => ab1Map[s.product] = s.qty);
+            const ab2Map = {}; ab2.forEach(s => ab2Map[s.product] = s.qty);
+            const ab3Map = {}; ab3.forEach(s => ab3Map[s.product] = s.qty);
+
+            const productCat = {};
+            products.forEach(p => { productCat[p.name] = p.category || "AUTRES"; });
+
+            const allNames = new Set([
+              ...Object.keys(central), ...Object.keys(ab1Map), ...Object.keys(ab2Map), ...Object.keys(ab3Map)
+            ]);
+            let rows = [...allNames].map(name => {
+              const mag = Math.max(0, central[name]?.qty || 0);
+              const unit = central[name]?.unit || ab1.find(s=>s.product===name)?.unit || ab2.find(s=>s.product===name)?.unit || ab3.find(s=>s.product===name)?.unit || "KG";
+              const a1 = ab1Map[name] || 0, a2 = ab2Map[name] || 0, a3 = ab3Map[name] || 0;
+              return { product: name, unit, category: productCat[name] || "AUTRES", mag, ab1: a1, ab2: a2, ab3: a3, total: mag+a1+a2+a3, price: getPrice(name) };
+            }).filter(r => r.total > 0.001);
+            if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
+            rows.sort((a,b) => a.product.localeCompare(b.product));
+
+            const totals = rows.reduce((t,r) => {
+              t.mag += r.mag*r.price; t.ab1 += r.ab1*r.price; t.ab2 += r.ab2*r.price; t.ab3 += r.ab3*r.price; t.total += r.total*r.price;
+              return t;
+            }, { mag:0, ab1:0, ab2:0, ab3:0, total:0 });
+            const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
+            const fmtQty = (n) => (n % 1 === 0 ? n : n.toFixed(2));
+
+            const handleExportGlobal = () => {
+              const dateStr = new Date().toLocaleDateString("fr-FR", { weekday:"long", day:"2-digit", month:"long", year:"numeric" });
+              const fileDate = new Date().toISOString().split("T")[0];
+              const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
+              const aoa = [];
+              aoa.push(["🫐 Agro Berry", "", "", "", "", "", "", ""]);
+              aoa.push(["Stock Global — Magasin + AB1 + AB2 + AB3", "", "", "", "", "", "", ""]);
+              aoa.push([`📅 ${dateStr}`, "", "", "", "", "", "", ""]);
+              aoa.push([`📦 ${rows.length} produits   💰 ${Math.round(totals.total).toLocaleString("fr-FR")} MAD`, "", "", "", "", "", "", ""]);
+              aoa.push(["", "", "", "", "", "", "", ""]);
+              aoa.push(["Produit","Catégorie","Unité","Prix (MAD)","MAG","AB1","AB2","AB3","TOTAL"]);
+              rows.forEach(r => {
+                aoa.push([r.product, r.category, r.unit, Math.round(r.price*100)/100, r.mag, r.ab1, r.ab2, r.ab3, r.total]);
+              });
+              const totRowIdx = aoa.length;
+              aoa.push(["", "", "", "TOTAL (MAD)", Math.round(totals.mag), Math.round(totals.ab1), Math.round(totals.ab2), Math.round(totals.ab3), Math.round(totals.total)]);
+              const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
+              ws["!cols"] = [{wch:30},{wch:16},{wch:8},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:12}];
+              ws["!merges"] = [
+                {s:{r:0,c:0},e:{r:0,c:8}}, {s:{r:1,c:0},e:{r:1,c:8}}, {s:{r:2,c:0},e:{r:2,c:8}}, {s:{r:3,c:0},e:{r:3,c:8}}, {s:{r:4,c:0},e:{r:4,c:8}}
+              ];
+              const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
+              for (let c = 0; c < 9; c++) {
+                const cell = ws[XLSXStyle.utils.encode_cell({r:5,c})];
+                if (cell) cell.s = { font:{bold:true,color:{rgb:WHITE},sz:10}, fill:{fgColor:{rgb:COFFEE}}, alignment:{horizontal:c===0?"left":"center",vertical:"center"}, border };
+              }
+              for (let r = 6; r < totRowIdx; r++) {
+                for (let c = 0; c < 9; c++) {
+                  const cell = ws[XLSXStyle.utils.encode_cell({r,c})];
+                  if (cell) cell.s = { font:{sz:9}, fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}}, alignment:{horizontal:c===0?"left":"right",vertical:"center"}, border, numFmt: c>=4?"#,##0.##":undefined };
+                }
+              }
+              for (let c = 0; c < 9; c++) {
+                const cell = ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})];
+                if (cell) cell.s = { font:{bold:true,sz:10,color:{rgb:WHITE}}, fill:{fgColor:{rgb:COFFEE_DARK}}, alignment:{horizontal:c===0?"left":"right",vertical:"center"}, border, numFmt: c>=4?"#,##0":undefined };
+              }
+              const wb = XLSXStyle.utils.book_new();
+              XLSXStyle.utils.book_append_sheet(wb, ws, "Stock Global");
+              XLSXStyle.writeFile(wb, `stock-global-${fileDate}.xlsx`);
+            };
+
+            return (
+              <div className="page">
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
+                  <div>
+                    <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Stock Global</h2>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Magasin central + AGB1 + AGB2 + AGB3 — instantané, en temps réel</p>
+                  </div>
+                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                </div>
+                <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+                  <div className="stat-card"><div className="stat-label">🏬 Magasin</div><div className="stat-value">{fmt(totals.mag)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🌿 AGB1</div><div className="stat-value">{fmt(totals.ab1)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🫐 AGB2</div><div className="stat-value">{fmt(totals.ab2)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🫐 AGB3</div><div className="stat-value">{fmt(totals.ab3)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📊 TOTAL</div><div className="stat-value">{fmt(totals.total)}</div></div>
+                </div>
+                <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
+                {loadingStock ? (
+                  <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
+                ) : rows.length === 0 ? (
+                  <div className="empty-state"><div className="empty-icon">🌍</div><div className="empty-text">Aucun produit en stock</div></div>
+                ) : (
+                  <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                      <thead>
+                        <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
+                          {["Article","Unité","Magasin","AB1","AB2","AB3","Total"].map((h,i) => (
+                            <th key={h} style={{padding:"10px 14px",textAlign:i===0?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"nowrap"}}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(r => (
+                          <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
+                            <td style={{padding:"10px 14px",fontWeight:600,color:"#1d1d1f"}}>{r.product}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.mag)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab1)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab2)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab3)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{fmtQty(r.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* FORMS */}
-          {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && active !== "report" && (
+          {active !== "history" && active !== "stock" && active !== "alerts" && active !== "melanges" && active !== "report" && active !== "globalstock" && (
             <div className="page">
               <div className="form-card">
                 {success && <div className="alert success">✓ Enregistré avec succès !{active === "exit" && form.toFarm ? " · Entrée créée automatiquement sur "+form.toFarm.replace("AGRO BERRY ","AGB")+"." : ""}</div>}
