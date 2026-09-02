@@ -1570,6 +1570,7 @@ export default function Dashboard({ user, userInfo }) {
           })()}
 
           {active === "globalstock" && (() => {
+            const period = MONTH_PERIODS[reportMonth];
             const priceMap = {};
             for (const m of allMovements) {
               if (m.type !== "entry") continue;
@@ -1598,26 +1599,42 @@ export default function Dashboard({ user, userInfo }) {
             const ab2Map = {}; ab2.forEach(s => ab2Map[s.product] = s.qty);
             const ab3Map = {}; ab3.forEach(s => ab3Map[s.product] = s.qty);
 
+            // Consommation sur la periode selectionnee - calcul simple, direct: juste la somme
+            // des mouvements type='consumption' par ferme, sans notion de stock initial/entrees/sorties
+            // (c'est ce genre de logique complexe qui causait les divergences precedentes).
+            const consAB1 = {}, consAB2 = {}, consAB3 = {};
+            allMovements.forEach(m => {
+              if (m.type !== "consumption" || !m.date || m.date < period.start || m.date > period.end || !m.product) return;
+              const qty = parseFloat(m.quantity) || 0;
+              const farm = m.farm || "";
+              if (farm.includes("1")) consAB1[m.product] = (consAB1[m.product]||0) + qty;
+              else if (farm.includes("2")) consAB2[m.product] = (consAB2[m.product]||0) + qty;
+              else if (farm.includes("3")) consAB3[m.product] = (consAB3[m.product]||0) + qty;
+            });
+
             const productCat = {};
             products.forEach(p => { productCat[p.name] = p.category || "AUTRES"; });
 
             const allNames = new Set([
-              ...(magData ? Object.keys(magData) : []), ...Object.keys(ab1Map), ...Object.keys(ab2Map), ...Object.keys(ab3Map)
+              ...(magData ? Object.keys(magData) : []), ...Object.keys(ab1Map), ...Object.keys(ab2Map), ...Object.keys(ab3Map),
+              ...Object.keys(consAB1), ...Object.keys(consAB2), ...Object.keys(consAB3)
             ]);
             let rows = [...allNames].map(name => {
               const mag = Math.max(0, magData?.[name]?.quantity || 0);
               const unit = ab1.find(s=>s.product===name)?.unit || ab2.find(s=>s.product===name)?.unit || ab3.find(s=>s.product===name)?.unit || "KG";
               const a1 = ab1Map[name] || 0, a2 = ab2Map[name] || 0, a3 = ab3Map[name] || 0;
+              const c1 = consAB1[name] || 0, c2 = consAB2[name] || 0, c3 = consAB3[name] || 0;
               const price = magData?.[name]?.price || getPrice(name);
-              return { product: name, unit, category: productCat[name] || "AUTRES", mag, ab1: a1, ab2: a2, ab3: a3, total: mag+a1+a2+a3, price };
-            }).filter(r => r.total > 0.001);
+              return { product: name, unit, category: productCat[name] || "AUTRES", mag, ab1: a1, ab2: a2, ab3: a3, total: mag+a1+a2+a3, cons1: c1, cons2: c2, cons3: c3, consTot: c1+c2+c3, price };
+            }).filter(r => r.total > 0.001 || r.consTot > 0.001);
             if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
             rows.sort((a,b) => a.product.localeCompare(b.product));
 
             const totals = rows.reduce((t,r) => {
               t.mag += r.mag*r.price; t.ab1 += r.ab1*r.price; t.ab2 += r.ab2*r.price; t.ab3 += r.ab3*r.price; t.total += r.total*r.price;
+              t.cons += r.consTot*r.price;
               return t;
-            }, { mag:0, ab1:0, ab2:0, ab3:0, total:0 });
+            }, { mag:0, ab1:0, ab2:0, ab3:0, total:0, cons:0 });
             const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
             const fmtQty = (n) => (!n ? "–" : (n % 1 === 0 ? n : n.toFixed(2)));
 
@@ -1625,18 +1642,19 @@ export default function Dashboard({ user, userInfo }) {
               const fileDate = new Date().toISOString().split("T")[0];
               const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
               const aoa = [];
-              aoa.push(["Stock Global — Magasin + AB1 + AB2 + AB3", "", "", "", "", "", "", ""]);
-              aoa.push(["Produit","Catégorie","Unité","Prix (MAD)","MAG","AB1","AB2","AB3","TOTAL"]);
-              rows.forEach(r => aoa.push([r.product, r.category, r.unit, Math.round(r.price*100)/100, r.mag, r.ab1, r.ab2, r.ab3, r.total]));
+              aoa.push(["Stock Global — Magasin + AB1 + AB2 + AB3", "", "", "", "", "", "", "", "", "", "", "", ""]);
+              aoa.push([`Consommation: ${period.label}`, "", "", "", "", "", "", "", "", "", "", "", ""]);
+              aoa.push(["Produit","Catégorie","Unité","Prix (MAD)","MAG","AB1","AB2","AB3","TOTAL","Conso AB1","Conso AB2","Conso AB3","Conso TOT"]);
+              rows.forEach(r => aoa.push([r.product, r.category, r.unit, Math.round(r.price*100)/100, r.mag, r.ab1, r.ab2, r.ab3, r.total, r.cons1, r.cons2, r.cons3, r.consTot]));
               const totRowIdx = aoa.length;
-              aoa.push(["", "", "", "TOTAL (MAD)", Math.round(totals.mag), Math.round(totals.ab1), Math.round(totals.ab2), Math.round(totals.ab3), Math.round(totals.total)]);
+              aoa.push(["", "", "", "TOTAL (MAD)", Math.round(totals.mag), Math.round(totals.ab1), Math.round(totals.ab2), Math.round(totals.ab3), Math.round(totals.total), "", "", "", Math.round(totals.cons)]);
               const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
-              ws["!cols"] = [{wch:30},{wch:16},{wch:8},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:12}];
-              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:8}}];
+              ws["!cols"] = [{wch:30},{wch:16},{wch:8},{wch:12},{wch:11},{wch:11},{wch:11},{wch:11},{wch:12},{wch:11},{wch:11},{wch:11},{wch:12}];
+              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:12}},{s:{r:1,c:0},e:{r:1,c:12}}];
               const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
-              for (let c=0;c<9;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:1,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:10},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
-              for (let r=2;r<totRowIdx;r++){ for(let c=0;c<9;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0.##":undefined}; } }
-              for (let c=0;c<9;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:10,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0":undefined}; }
+              for (let c=0;c<13;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:10},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
+              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<13;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0.##":undefined}; } }
+              for (let c=0;c<13;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:10,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0":undefined}; }
               const wb = XLSXStyle.utils.book_new();
               XLSXStyle.utils.book_append_sheet(wb, ws, "Stock Global");
               XLSXStyle.writeFile(wb, `stock-global-${fileDate}.xlsx`);
@@ -1647,9 +1665,14 @@ export default function Dashboard({ user, userInfo }) {
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
                   <div>
                     <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Stock Global</h2>
-                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Magasin central + AGB1 + AGB2 + AGB3 — instantané</p>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Magasin central + AGB1 + AGB2 + AGB3 — stock instantané, conso sur la période</p>
                   </div>
-                  <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select className="form-input" style={{maxWidth:200}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
+                      {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                    </select>
+                    <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                  </div>
                 </div>
                 {!magData && (
                   <div style={{marginBottom:16,padding:"12px 16px",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:10,fontSize:13,color:"#92400e"}}>
@@ -1658,7 +1681,7 @@ export default function Dashboard({ user, userInfo }) {
                 )}
                 {magData && globalStockCentral?.updatedAt && (
                   <p style={{fontSize:11,color:"#86868b",marginTop:-8,marginBottom:16}}>
-                    Magasin central mis à jour le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager)
+                    Magasin central mis à jour le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager) · Consommation : {period.start.split("-").reverse().join("/")} → {period.end.split("-").reverse().join("/")}
                   </p>
                 )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
@@ -1666,7 +1689,8 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="stat-card"><div className="stat-label">🌿 AGB1</div><div className="stat-value">{fmt(totals.ab1)}</div></div>
                   <div className="stat-card"><div className="stat-label">🫐 AGB2</div><div className="stat-value">{fmt(totals.ab2)}</div></div>
                   <div className="stat-card"><div className="stat-label">🫐 AGB3</div><div className="stat-value">{fmt(totals.ab3)}</div></div>
-                  <div className="stat-card"><div className="stat-label">📊 TOTAL</div><div className="stat-value">{fmt(totals.total)}</div></div>
+                  <div className="stat-card"><div className="stat-label">📊 TOTAL (reste)</div><div className="stat-value">{fmt(totals.total)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🔥 Consommation</div><div className="stat-value red">{fmt(totals.cons)}</div></div>
                 </div>
                 <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
                 {loadingStock ? (
@@ -1677,22 +1701,31 @@ export default function Dashboard({ user, userInfo }) {
                   <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
+                        <tr style={{background:"#f5f5f7"}}>
+                          <th rowSpan={2} style={{padding:"8px 14px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
+                          <th rowSpan={2} style={{padding:"8px 14px",textAlign:"center",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Unité</th>
+                          <th colSpan={5} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📦 Stock actuel (reste)</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#c2410c",background:"#fed7aa"}}>🔥 Consommation ({period.label})</th>
+                        </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
-                          {["Article","Unité","Magasin","AB1","AB2","AB3","Total"].map((h,i) => (
-                            <th key={h} style={{padding:"10px 14px",textAlign:i===0?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"nowrap"}}>{h}</th>
-                          ))}
+                          {["Magasin","AB1","AB2","AB3","Total"].map(h=><th key={"s"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eff6ff"}}>{h}</th>)}
+                          {["AB1","AB2","AB3","Total"].map(h=><th key={"c"+h} style={{padding:"4px 8px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fff7ed"}}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
                         {rows.map(r => (
                           <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
-                            <td style={{padding:"10px 14px",fontWeight:600,color:"#1d1d1f"}}>{r.product}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.mag)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab1)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab2)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{fmtQty(r.ab3)}</td>
-                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{fmtQty(r.total)}</td>
+                            <td style={{padding:"10px 14px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{r.product}</td>
+                            <td style={{padding:"10px 14px",textAlign:"center",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#eff6ff"}}>{fmtQty(r.mag)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#eff6ff"}}>{fmtQty(r.ab1)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#eff6ff"}}>{fmtQty(r.ab2)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#eff6ff"}}>{fmtQty(r.ab3)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700,background:"#dbeafe"}}>{fmtQty(r.total)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#fff7ed"}}>{fmtQty(r.cons1)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#fff7ed"}}>{fmtQty(r.cons2)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",background:"#fff7ed"}}>{fmtQty(r.cons3)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700,background:"#fed7aa"}}>{fmtQty(r.consTot)}</td>
                           </tr>
                         ))}
                       </tbody>
