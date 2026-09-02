@@ -1717,7 +1717,7 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="empty-state"><div className="empty-icon">🌍</div><div className="empty-text">Aucun produit en stock</div></div>
                 ) : (
                   <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1300}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1450}}>
                       <thead>
                         <tr style={{background:"#f5f5f7"}}>
                           <th rowSpan={2} style={{padding:"8px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
@@ -1726,6 +1726,7 @@ export default function Dashboard({ user, userInfo }) {
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#16a34a",background:"#dcfce7"}}>🌿 AGB1</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#0891b2",background:"#cffafe"}}>🫐 AGB2</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>🫐 AGB3</th>
+                          <th rowSpan={2} style={{padding:"8px 10px",textAlign:"right",fontSize:10,fontWeight:700,color:"#92400e",background:"#fef3c7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>📊 Stock Final<br/><span style={{fontWeight:400,fontSize:8}}>(Magasin+fermes)</span></th>
                         </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
                           {["Ent.","Conso","Sort.","Reste"].map(h=><th key={"1"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
@@ -1744,6 +1745,7 @@ export default function Dashboard({ user, userInfo }) {
                               {td(r.a1.ent,"#f0fdf4")}{td(r.a1.cons,"#f0fdf4")}{td(r.a1.sort,"#f0fdf4")}{td(r.a1.stock,"#dcfce7",true)}
                               {td(r.a2.ent,"#ecfeff")}{td(r.a2.cons,"#ecfeff")}{td(r.a2.sort,"#ecfeff")}{td(r.a2.stock,"#cffafe",true)}
                               {td(r.a3.ent,"#faf5ff")}{td(r.a3.cons,"#faf5ff")}{td(r.a3.sort,"#faf5ff")}{td(r.a3.stock,"#f3e8ff",true)}
+                              {td(r.total,"#fef3c7",true)}
                             </tr>
                           );
                         })}
