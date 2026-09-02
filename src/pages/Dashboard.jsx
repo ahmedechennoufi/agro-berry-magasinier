@@ -1778,6 +1778,21 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="stat-card"><div className="stat-label">📊 Stock Final</div><div className="stat-value">{fmt(totals.fin)}</div></div>
                 </div>
                 <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
+                <div style={{marginBottom:16,padding:"10px 14px",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,fontSize:12,color:"#92400e",fontFamily:"'Space Mono',monospace"}}>
+                  🔍 Diagnostic — Mouvements chargés (Firestore) : <strong>{allMovements.length}</strong>
+                  {globalStockSearch && (() => {
+                    const matches = allMovements.filter(m => (m.product||'').toLowerCase().includes(globalStockSearch.toLowerCase()));
+                    const entries = matches.filter(m => m.type === 'entry');
+                    const exits = matches.filter(m => m.type === 'exit');
+                    const entrySum = entries.reduce((s,m) => s + (parseFloat(m.quantity)||0), 0);
+                    const exitSum = exits.reduce((s,m) => s + (parseFloat(m.quantity)||0), 0);
+                    return (
+                      <> · mouvements "{globalStockSearch}": <strong>{matches.length}</strong>
+                        {" "}(entrées: {entries.length} / {entrySum} — sorties: {exits.length} / {exitSum} — stock magasin = {entrySum - exitSum})
+                      </>
+                    );
+                  })()}
+                </div>
                 {loadingStock ? (
                   <div className="empty-state"><div className="empty-icon loading-spin">◈</div><div className="empty-text">Chargement...</div></div>
                 ) : rows.length === 0 ? (
