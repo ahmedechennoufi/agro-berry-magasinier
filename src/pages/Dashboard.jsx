@@ -136,11 +136,14 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
     });
   });
 
-  // Stock magasin cumule AVANT le debut de periode
-  const magBeforePeriod = {};
+  // Stock magasin central = TOUJOURS le stock actuel en temps reel (entrees - sorties,
+  // tous mouvements confondus, sans limite de periode) - exactement la meme logique
+  // que la page "Stock Global" du Manager (calculateGlobalStock), pour garantir que
+  // les deux affichent toujours le meme chiffre, quel que soit le mois selectionne.
+  const magLiveStock = {};
   movements.forEach(m => {
-    if (!m.date || m.date >= start || !m.product) return;
-    magBeforePeriod[m.product] = (magBeforePeriod[m.product]||0) + (m.type==='entry' ? (parseFloat(m.quantity)||0) : m.type==='exit' ? -(parseFloat(m.quantity)||0) : 0);
+    if (!m.product) return;
+    magLiveStock[m.product] = (magLiveStock[m.product]||0) + (m.type==='entry' ? (parseFloat(m.quantity)||0) : m.type==='exit' ? -(parseFloat(m.quantity)||0) : 0);
   });
 
   // Mouvements de la periode
@@ -181,8 +184,8 @@ function getGlobalConsoReport(movements, products, physicalInventories, stockIni
     data.finAB1 = Math.max(0, data.initAB1 + data.entAB1 + data.exitAB1 - data.transOutAB1 - data.consAB1);
     data.finAB2 = Math.max(0, data.initAB2 + data.entAB2 + data.exitAB2 - data.transOutAB2 - data.consAB2);
     data.finAB3 = Math.max(0, data.initAB3 + data.entAB3 + data.exitAB3 - data.transOutAB3 - data.consAB3);
-    data.initMAG = Math.max(0, magBeforePeriod[data.name] || 0);
-    data.stockMAG = Math.max(0, (magBeforePeriod[data.name]||0) + data.entMAG - data.exitMAG);
+    data.initMAG = Math.max(0, magLiveStock[data.name] || 0);
+    data.stockMAG = Math.max(0, magLiveStock[data.name] || 0);
   });
 
   return Object.values(dataMap).filter(d => {
