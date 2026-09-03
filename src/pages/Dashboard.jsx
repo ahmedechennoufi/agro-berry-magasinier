@@ -1748,8 +1748,7 @@ export default function Dashboard({ user, userInfo }) {
                         id, farm: comparisonFarm, date: comparisonDate, data,
                         notes: `Inventaire physique saisi via app Magasinier (comparaison) - ${nbModified} produit(s) corrigé(s)`,
                       });
-                      setSaveInventoryMsg({ type: "success", text: `✅ Inventaire enregistré (${Object.keys(data).length} produits).` });
-                      setPhysicalValues({});
+                      setSaveInventoryMsg({ type: "success", text: `✅ Inventaire enregistré (${Object.keys(data).length} produits). Les valeurs restent affichées ci-dessous pour vérification — le théorique va se mettre à jour automatiquement dans quelques secondes.` });
                     } catch (err) {
                       console.error(err);
                       setSaveInventoryMsg({ type: "error", text: "❌ Échec de l'enregistrement: " + err.message });
