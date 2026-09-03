@@ -485,6 +485,12 @@ export default function Dashboard({ user, userInfo }) {
   const [stockInitialAll, setStockInitialAll] = useState({});
   const [globalStockCentral, setGlobalStockCentral] = useState(null); // { data: {product: {quantity,price,value}}, updatedAt } depuis Firestore, pousse par le Manager
   const [globalStockSearch, setGlobalStockSearch] = useState("");
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonFarm, setComparisonFarm] = useState("AGRO BERRY 1");
+  const [comparisonDate, setComparisonDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [physicalValues, setPhysicalValues] = useState({}); // { productName: "valeur saisie (string)" }
+  const [savingInventory, setSavingInventory] = useState(false);
+  const [saveInventoryMsg, setSaveInventoryMsg] = useState(null); // {type:'success'|'error', text}
   const [reportMonth, setReportMonth] = useState("AOUT");
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
@@ -1693,15 +1699,131 @@ export default function Dashboard({ user, userInfo }) {
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
                   <div>
                     <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Stock Global</h2>
-                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Groupé par métrique — Magasin + AGB1 + AGB2 + AGB3</p>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>{comparisonMode ? "Comparaison Physique vs Théorique" : "Groupé par métrique — Magasin + AGB1 + AGB2 + AGB3"}</p>
                   </div>
-                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                    <select className="form-input" style={{maxWidth:200}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
-                      {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
-                    </select>
-                    <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportGlobal}>📊 Export Excel</button>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    {!comparisonMode && (
+                      <select className="form-input" style={{maxWidth:200}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
+                        {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                      </select>
+                    )}
+                    {!comparisonMode && <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportGlobal}>📊 Export Excel</button>}
+                    <button className="refresh-btn" style={{background:comparisonMode?"#6b7280":"#8b5cf6",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={() => { setComparisonMode(m => !m); setSaveInventoryMsg(null); }}>
+                      {comparisonMode ? "← Retour" : "📋 Comparaison Physique"}
+                    </button>
                   </div>
                 </div>
+                {comparisonMode ? (() => {
+                  const farmArr = comparisonFarm === "AGRO BERRY 1" ? ab1 : comparisonFarm === "AGRO BERRY 2" ? ab2 : ab3;
+                  const farmKeyShort = comparisonFarm.replace("AGRO BERRY ", "AB");
+                  let compRows = farmArr.map(s => {
+                    const theo = s.qty;
+                    const rawInput = physicalValues[s.product];
+                    const phys = rawInput === undefined || rawInput === "" ? theo : (parseFloat(rawInput.replace(",", ".")) || 0);
+                    const ecart = Math.round((phys - theo) * 100) / 100;
+                    const price = getPrice(s.product);
+                    return { product: s.product, unit: s.unit, theo, phys, ecart, rawInput, price };
+                  });
+                  if (globalStockSearch) compRows = compRows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
+                  compRows.sort((a,b) => Math.abs(b.ecart*b.price) - Math.abs(a.ecart*a.price) || a.product.localeCompare(b.product));
+                  const ecartTotalValue = compRows.reduce((s,r) => s + r.ecart*r.price, 0);
+                  const nbModified = Object.keys(physicalValues).filter(k => physicalValues[k] !== "" && physicalValues[k] !== undefined).length;
+
+                  const handlePhysChange = (product, value) => {
+                    setPhysicalValues(prev => ({ ...prev, [product]: value }));
+                  };
+
+                  const handleSaveInventory = async () => {
+                    if (!window.confirm(`Enregistrer un nouvel inventaire physique pour ${comparisonFarm} daté du ${comparisonDate} ?\n\nÇa deviendra la nouvelle base de calcul du stock pour cette ferme à partir de cette date.`)) return;
+                    setSavingInventory(true);
+                    setSaveInventoryMsg(null);
+                    try {
+                      const data = {};
+                      farmArr.forEach(s => {
+                        const rawInput = physicalValues[s.product];
+                        data[s.product] = rawInput === undefined || rawInput === "" ? s.qty : (parseFloat(rawInput.replace(",", ".")) || 0);
+                      });
+                      const id = Date.now();
+                      await setDoc(doc(db, "physicalInventories", String(id)), {
+                        id, farm: comparisonFarm, date: comparisonDate, data,
+                        notes: `Inventaire physique saisi via app Magasinier (comparaison) - ${nbModified} produit(s) corrigé(s)`,
+                      });
+                      setSaveInventoryMsg({ type: "success", text: `✅ Inventaire enregistré (${Object.keys(data).length} produits).` });
+                      setPhysicalValues({});
+                    } catch (err) {
+                      console.error(err);
+                      setSaveInventoryMsg({ type: "error", text: "❌ Échec de l'enregistrement: " + err.message });
+                    }
+                    setSavingInventory(false);
+                  };
+
+                  return (
+                    <>
+                      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
+                        <select className="form-input" style={{maxWidth:220}} value={comparisonFarm} onChange={e => { setComparisonFarm(e.target.value); setPhysicalValues({}); setSaveInventoryMsg(null); }}>
+                          <option value="AGRO BERRY 1">🌿 AGRO BERRY 1</option>
+                          <option value="AGRO BERRY 2">🫐 AGRO BERRY 2</option>
+                          <option value="AGRO BERRY 3">🫐 AGRO BERRY 3</option>
+                        </select>
+                        <input type="date" className="form-input" style={{maxWidth:170}} value={comparisonDate} onChange={e => setComparisonDate(e.target.value)} />
+                        <input className="stock-search" style={{flex:1,minWidth:200}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
+                      </div>
+                      <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:14}}>
+                        <div className="stat-card"><div className="stat-label">🌾 Ferme</div><div className="stat-value" style={{fontSize:18}}>{farmKeyShort}</div></div>
+                        <div className="stat-card"><div className="stat-label">✏️ Produits modifiés</div><div className="stat-value">{nbModified}</div></div>
+                        <div className="stat-card"><div className="stat-label">💰 Écart total</div><div className="stat-value" style={{color: ecartTotalValue < 0 ? "#dc2626" : ecartTotalValue > 0 ? "#16a34a" : undefined}}>{Math.round(ecartTotalValue).toLocaleString("fr-FR")} MAD</div></div>
+                      </div>
+                      {saveInventoryMsg && (
+                        <div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,background:saveInventoryMsg.type==="success"?"#dcfce7":"#fee2e2",color:saveInventoryMsg.type==="success"?"#15803d":"#dc2626"}}>
+                          {saveInventoryMsg.text}
+                        </div>
+                      )}
+                      <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:12,color:"#1e40af"}}>
+                        💡 Saisis la quantité que tu comptes physiquement pour chaque produit — les champs sont pré-remplis avec le théorique, donc les produits que tu ne touches pas restent inchangés. Clique "Enregistrer" à la fin.
+                      </div>
+                      <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,marginBottom:14}}>
+                        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                          <thead>
+                            <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
+                              {["Article","Unité","Théorique","Physique","Écart"].map((h,i) => (
+                                <th key={h} style={{padding:"10px 12px",textAlign:i===0?"left":i===3?"center":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase"}}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {compRows.map(r => (
+                              <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)", background: Math.abs(r.ecart) > 0.001 ? "#fffbeb" : undefined}}>
+                                <td style={{padding:"8px 12px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{r.product}</td>
+                                <td style={{padding:"8px 12px",textAlign:"right",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
+                                <td style={{padding:"8px 12px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:"#86868b"}}>{r.theo % 1 === 0 ? r.theo : r.theo.toFixed(2)}</td>
+                                <td style={{padding:"6px 10px",textAlign:"center"}}>
+                                  <input
+                                    type="text" inputMode="decimal"
+                                    value={r.rawInput !== undefined ? r.rawInput : ""}
+                                    placeholder={r.theo % 1 === 0 ? String(r.theo) : r.theo.toFixed(2)}
+                                    onChange={e => handlePhysChange(r.product, e.target.value)}
+                                    style={{width:90,padding:"6px 8px",borderRadius:8,border:"1px solid #d1d5db",textAlign:"right",fontFamily:"'Space Mono',monospace",fontSize:13}}
+                                  />
+                                </td>
+                                <td style={{padding:"8px 12px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700,color: r.ecart>0.001?"#16a34a":r.ecart<-0.001?"#dc2626":"#86868b"}}>
+                                  {r.ecart > 0 ? "+" : ""}{r.ecart}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <button
+                        className="refresh-btn"
+                        disabled={savingInventory || nbModified === 0}
+                        style={{background: nbModified===0 ? "#d1d5db" : "#16a34a", border:"none", color:"#fff", fontWeight:700, padding:"12px 24px", fontSize:14, opacity: savingInventory?0.6:1, cursor: nbModified===0?"not-allowed":"pointer"}}
+                        onClick={handleSaveInventory}
+                      >
+                        {savingInventory ? "⏳ Enregistrement..." : `💾 Enregistrer l'inventaire physique (${nbModified} produit(s))`}
+                      </button>
+                    </>
+                  );
+                })() : (<>
                 {!magData && (
                   <div style={{marginBottom:16,padding:"12px 16px",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:10,fontSize:13,color:"#92400e"}}>
                     ⚠️ Le stock du magasin central n'a pas encore été synchronisé depuis le Manager. Demande à l'admin d'ouvrir "Stock Global" dans le Manager et de cliquer "🔥 Sync vers Magasinier".
@@ -1762,6 +1884,7 @@ export default function Dashboard({ user, userInfo }) {
                     </table>
                   </div>
                 )}
+                </>)}
               </div>
             );
           })()}
