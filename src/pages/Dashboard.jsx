@@ -489,6 +489,11 @@ export default function Dashboard({ user, userInfo }) {
   const [comparisonFarm, setComparisonFarm] = useState("AGRO BERRY 1");
   const [comparisonDate, setComparisonDate] = useState(() => new Date().toISOString().slice(0,10));
   const [physicalValues, setPhysicalValues] = useState({}); // { productName: "valeur saisie (string)" }
+  const [comparisonSubView, setComparisonSubView] = useState("new"); // "new" | "history"
+  const [savedComparisons, setSavedComparisons] = useState([]);
+  const [savingComparison, setSavingComparison] = useState(false);
+  const [replacingStock, setReplacingStock] = useState(false);
+  const [actionMsg, setActionMsg] = useState(null); // {type:'success'|'error', text}
   const [reportMonth, setReportMonth] = useState("AOUT");
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
@@ -621,6 +626,15 @@ export default function Dashboard({ user, userInfo }) {
     const unsub = onSnapshot(doc(db, "config", "globalStockCentral"), snap => {
       setGlobalStockCentral(snap.exists() ? snap.data() : null);
     }, err => console.error("onSnapshot globalStockCentral:", err));
+    return () => { try { unsub(); } catch {} };
+  }, []);
+
+  // Ecoute des comparaisons physique/theorique sauvegardees (collection dediee, distincte de
+  // physicalInventories - une comparaison sauvegardee n'affecte JAMAIS le calcul du stock).
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "stockComparisons"), snap => {
+      setSavedComparisons(snap.docs.map(d => d.data()).sort((a,b) => (b.createdAt||"").localeCompare(a.createdAt||"")));
+    }, err => console.error("onSnapshot stockComparisons:", err));
     return () => { try { unsub(); } catch {} };
   }, []);
 
@@ -1746,10 +1760,100 @@ export default function Dashboard({ user, userInfo }) {
                     XLSXStyle.writeFile(wb, `comparaison-physique-${farmKeyShort}-${fileDate}.xlsx`);
                   };
 
+                  const handleSaveComparison = async () => {
+                    if (nbModified === 0) return;
+                    setSavingComparison(true);
+                    setActionMsg(null);
+                    try {
+                      const id = Date.now();
+                      const rowsToSave = compRows
+                        .filter(r => r.rawInput !== undefined && r.rawInput !== "")
+                        .map(r => ({ product: r.product, unit: r.unit, theo: r.theo, phys: r.phys, ecart: r.ecart, price: r.price }));
+                      await setDoc(doc(db, "stockComparisons", String(id)), {
+                        id, farm: comparisonFarm, date: comparisonDate,
+                        createdAt: new Date().toISOString(), createdBy: auth.currentUser?.email || farmName,
+                        rows: rowsToSave, ecartTotalValue: Math.round(ecartTotalValue), nbCompared: rowsToSave.length,
+                      });
+                      setActionMsg({ type: "success", text: `✅ Comparaison sauvegardée (${rowsToSave.length} produits) — consultable dans "Historique".` });
+                    } catch (err) {
+                      console.error(err);
+                      setActionMsg({ type: "error", text: "❌ Échec: " + err.message });
+                    }
+                    setSavingComparison(false);
+                  };
+
+                  const handleReplaceStock = async () => {
+                    if (nbModified === 0) return;
+                    if (!window.confirm(`⚠️ ATTENTION — Action irréversible\n\nÇa va REMPLACER le stock théorique de ${comparisonFarm} par les valeurs physiques saisies, à partir du ${comparisonDate}.\n\nTous les mouvements après cette date resteront comptés normalement, mais le stock AVANT sera recalé sur tes valeurs physiques.\n\nConfirmer le remplacement ?`)) return;
+                    setReplacingStock(true);
+                    setActionMsg(null);
+                    try {
+                      const data = {};
+                      farmArr.forEach(s => {
+                        const rawInput = physicalValues[s.product];
+                        data[s.product] = rawInput === undefined || rawInput === "" ? s.qty : (parseFloat(rawInput.replace(",", ".")) || 0);
+                      });
+                      const id = Date.now();
+                      await setDoc(doc(db, "physicalInventories", String(id)), {
+                        id, farm: comparisonFarm, date: comparisonDate, data,
+                        notes: `Stock physique remplacé via app Magasinier (comparaison) - ${nbModified} produit(s) corrigé(s)`,
+                      });
+                      setActionMsg({ type: "success", text: `✅ Stock physique remplacé pour ${comparisonFarm}. Le théorique va se mettre à jour dans quelques secondes.` });
+                    } catch (err) {
+                      console.error(err);
+                      setActionMsg({ type: "error", text: "❌ Échec: " + err.message });
+                    }
+                    setReplacingStock(false);
+                  };
+
                   return (
                     <>
+                      <div style={{display:"flex",gap:8,marginBottom:14}}>
+                        <button className="refresh-btn" style={{background:comparisonSubView==="new"?"#8b5cf6":"#e5e7eb",color:comparisonSubView==="new"?"#fff":"#374151",border:"none",fontWeight:600}} onClick={() => setComparisonSubView("new")}>✏️ Nouvelle comparaison</button>
+                        <button className="refresh-btn" style={{background:comparisonSubView==="history"?"#8b5cf6":"#e5e7eb",color:comparisonSubView==="history"?"#fff":"#374151",border:"none",fontWeight:600}} onClick={() => setComparisonSubView("history")}>📚 Historique ({savedComparisons.length})</button>
+                      </div>
+
+                      {comparisonSubView === "history" ? (
+                        savedComparisons.length === 0 ? (
+                          <div className="empty-state"><div className="empty-icon">📚</div><div className="empty-text">Aucune comparaison sauvegardée</div></div>
+                        ) : (
+                          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                            {savedComparisons.map(c => (
+                              <div key={c.id} style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:16}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                                  <div>
+                                    <div style={{fontWeight:700,fontSize:14}}>{c.farm} — {c.date?.split("-").reverse().join("/")}</div>
+                                    <div style={{fontSize:11,color:"#86868b"}}>{c.nbCompared} produit(s) · Écart {c.ecartTotalValue >= 0 ? "+" : ""}{c.ecartTotalValue?.toLocaleString("fr-FR")} MAD · Sauvé le {c.createdAt ? new Date(c.createdAt).toLocaleString("fr-FR") : "?"}</div>
+                                  </div>
+                                  <button
+                                    style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"6px 12px",fontWeight:600,fontSize:12,cursor:"pointer"}}
+                                    onClick={async () => { if (window.confirm("Supprimer cette comparaison sauvegardée ?")) { await deleteDoc(doc(db, "stockComparisons", String(c.id))); } }}
+                                  >🗑️ Supprimer</button>
+                                </div>
+                                {c.rows && c.rows.length > 0 && (
+                                  <details style={{marginTop:10}}>
+                                    <summary style={{cursor:"pointer",fontSize:12,color:"#8b5cf6",fontWeight:600}}>Voir le détail</summary>
+                                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,marginTop:8}}>
+                                      <thead><tr style={{background:"#f5f5f7"}}>{["Produit","Théorique","Physique","Écart"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:h==="Produit"?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73"}}>{h}</th>)}</tr></thead>
+                                      <tbody>{c.rows.map(r => (
+                                        <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
+                                          <td style={{padding:"6px 8px"}}>{r.product}</td>
+                                          <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{r.theo}</td>
+                                          <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Space Mono',monospace"}}>{r.phys}</td>
+                                          <td style={{padding:"6px 8px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700,color:r.ecart>0?"#16a34a":r.ecart<0?"#dc2626":"#86868b"}}>{r.ecart>0?"+":""}{r.ecart}</td>
+                                        </tr>
+                                      ))}</tbody>
+                                    </table>
+                                  </details>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      ) : (
+                      <>
                       <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
-                        <select className="form-input" style={{maxWidth:220}} value={comparisonFarm} onChange={e => { setComparisonFarm(e.target.value); setPhysicalValues({}); }}>
+                        <select className="form-input" style={{maxWidth:220}} value={comparisonFarm} onChange={e => { setComparisonFarm(e.target.value); setPhysicalValues({}); setActionMsg(null); }}>
                           <option value="AGRO BERRY 1">🌿 AGRO BERRY 1</option>
                           <option value="AGRO BERRY 2">🫐 AGRO BERRY 2</option>
                           <option value="AGRO BERRY 3">🫐 AGRO BERRY 3</option>
@@ -1763,8 +1867,11 @@ export default function Dashboard({ user, userInfo }) {
                         <div className="stat-card"><div className="stat-label">✏️ Produits comparés</div><div className="stat-value">{nbModified}</div></div>
                         <div className="stat-card"><div className="stat-label">💰 Écart total</div><div className="stat-value" style={{color: ecartTotalValue < 0 ? "#dc2626" : ecartTotalValue > 0 ? "#16a34a" : undefined}}>{Math.round(ecartTotalValue).toLocaleString("fr-FR")} MAD</div></div>
                       </div>
+                      {actionMsg && (
+                        <div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,background:actionMsg.type==="success"?"#dcfce7":"#fee2e2",color:actionMsg.type==="success"?"#15803d":"#dc2626"}}>{actionMsg.text}</div>
+                      )}
                       <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:12,color:"#1e40af"}}>
-                        💡 Ceci est un outil de <strong>comparaison uniquement</strong> — rien n'est enregistré ni modifié dans le stock. Saisis les quantités que tu comptes physiquement pour voir l'écart ; ferme cet écran ou exporte en Excel quand tu as fini, tes saisies ne seront pas conservées après.
+                        💡 Saisis les quantités comptées pour voir l'écart. <strong>"Sauvegarder"</strong> garde une trace consultable (sans toucher au stock). <strong>"Remplacer stock physique"</strong> applique réellement ces valeurs comme nouvelle base de calcul (irréversible).
                       </div>
                       <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,marginBottom:14}}>
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -1798,6 +1905,20 @@ export default function Dashboard({ user, userInfo }) {
                           </tbody>
                         </table>
                       </div>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                        <button
+                          disabled={savingComparison || nbModified === 0}
+                          style={{background: nbModified===0 ? "#d1d5db" : "#0ea5e9", border:"none", color:"#fff", fontWeight:700, padding:"12px 20px", fontSize:13, borderRadius:12, opacity: savingComparison?0.6:1, cursor: nbModified===0?"not-allowed":"pointer"}}
+                          onClick={handleSaveComparison}
+                        >{savingComparison ? "⏳ Sauvegarde..." : `💾 Sauvegarder la comparaison (${nbModified})`}</button>
+                        <button
+                          disabled={replacingStock || nbModified === 0}
+                          style={{background: nbModified===0 ? "#d1d5db" : "#dc2626", border:"none", color:"#fff", fontWeight:700, padding:"12px 20px", fontSize:13, borderRadius:12, opacity: replacingStock?0.6:1, cursor: nbModified===0?"not-allowed":"pointer"}}
+                          onClick={handleReplaceStock}
+                        >{replacingStock ? "⏳ Remplacement..." : `🔄 Remplacer stock physique (${nbModified})`}</button>
+                      </div>
+                      </>
+                      )}
                     </>
                   );
                 })() : (<>
