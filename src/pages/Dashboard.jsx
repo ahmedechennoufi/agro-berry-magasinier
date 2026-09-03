@@ -1655,7 +1655,11 @@ export default function Dashboard({ user, userInfo }) {
               const a3 = { ent: f3.ent[name]||0, cons: f3.cons[name]||0, sort: f3.sort[name]||0, stock: ab3StockMap[name]||0 };
               const price = magData?.[name]?.price || getPrice(name);
               const total = mag + a1.stock + a2.stock + a3.stock;
-              return { product: name, unit, category: productCat[name] || "AUTRES", mag, magEnt, magSort, a1, a2, a3, total, price };
+              const initMag = mag - magEnt + magSort;
+              const initA1 = a1.stock - a1.ent + a1.sort + a1.cons;
+              const initA2 = a2.stock - a2.ent + a2.sort + a2.cons;
+              const initA3 = a3.stock - a3.ent + a3.sort + a3.cons;
+              return { product: name, unit, category: productCat[name] || "AUTRES", mag, magEnt, magSort, initMag, initA1, initA2, initA3, a1, a2, a3, total, price };
             }).filter(r => r.total > 0.001 || r.a1.ent>0.001 || r.a1.cons>0.001 || r.a1.sort>0.001 || r.a2.ent>0.001 || r.a2.cons>0.001 || r.a2.sort>0.001 || r.a3.ent>0.001 || r.a3.cons>0.001 || r.a3.sort>0.001 || r.magEnt>0.001 || r.magSort>0.001);
             if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
             rows.sort((a,b) => a.product.localeCompare(b.product));
@@ -1663,12 +1667,13 @@ export default function Dashboard({ user, userInfo }) {
             const totals = rows.reduce((t,r) => {
               t.magReste += r.mag*r.price; t.total += r.total*r.price;
               t.magEnt += r.magEnt*r.price; t.magSort += r.magSort*r.price;
+              t.initMag += r.initMag*r.price; t.initA1 += r.initA1*r.price; t.initA2 += r.initA2*r.price; t.initA3 += r.initA3*r.price;
               t.a1stock += r.a1.stock*r.price; t.a2stock += r.a2.stock*r.price; t.a3stock += r.a3.stock*r.price;
               t.a1ent += r.a1.ent*r.price; t.a2ent += r.a2.ent*r.price; t.a3ent += r.a3.ent*r.price;
               t.a1sort += r.a1.sort*r.price; t.a2sort += r.a2.sort*r.price; t.a3sort += r.a3.sort*r.price;
               t.a1cons += r.a1.cons*r.price; t.a2cons += r.a2.cons*r.price; t.a3cons += r.a3.cons*r.price;
               return t;
-            }, { magReste:0, magEnt:0, magSort:0, total:0, a1stock:0, a2stock:0, a3stock:0, a1ent:0, a2ent:0, a3ent:0, a1sort:0, a2sort:0, a3sort:0, a1cons:0, a2cons:0, a3cons:0 });
+            }, { magReste:0, magEnt:0, magSort:0, total:0, initMag:0, initA1:0, initA2:0, initA3:0, a1stock:0, a2stock:0, a3stock:0, a1ent:0, a2ent:0, a3ent:0, a1sort:0, a2sort:0, a3sort:0, a1cons:0, a2cons:0, a3cons:0 });
             const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
             const fmtQty = (n) => (!n ? "–" : (n % 1 === 0 ? n : n.toFixed(2)));
 
@@ -1676,31 +1681,35 @@ export default function Dashboard({ user, userInfo }) {
               const fileDate = new Date().toISOString().split("T")[0];
               const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
               const aoa = [];
-              aoa.push(["Stock Global — groupé par métrique", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-              aoa.push([`Entrées/Sorties/Conso sur ${period.label} · Reste = actuel`, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+              aoa.push(["Stock Global — groupé par métrique"]);
+              aoa.push([`Entrées/Sorties/Conso sur ${period.label} · Reste = actuel`]);
               aoa.push(["Produit","Unité",
+                "Init. Magasin","Init. AB1","Init. AB2","Init. AB3",
                 "Ent. Magasin","Ent. AB1","Ent. AB2","Ent. AB3",
                 "Sort. Magasin","Sort. AB1","Sort. AB2","Sort. AB3",
                 "Conso AB1","Conso AB2","Conso AB3",
                 "Reste Magasin","Reste AB1","Reste AB2","Reste AB3","Reste TOTAL"]);
               rows.forEach(r => aoa.push([r.product, r.unit,
+                r.initMag, r.initA1, r.initA2, r.initA3,
                 r.magEnt, r.a1.ent, r.a2.ent, r.a3.ent,
                 r.magSort, r.a1.sort, r.a2.sort, r.a3.sort,
                 r.a1.cons, r.a2.cons, r.a3.cons,
                 r.mag, r.a1.stock, r.a2.stock, r.a3.stock, r.total]));
               const totRowIdx = aoa.length;
               aoa.push(["", "TOTAL (MAD)",
+                Math.round(totals.initMag), Math.round(totals.initA1), Math.round(totals.initA2), Math.round(totals.initA3),
                 Math.round(totals.magEnt), Math.round(totals.a1ent), Math.round(totals.a2ent), Math.round(totals.a3ent),
                 Math.round(totals.magSort), Math.round(totals.a1sort), Math.round(totals.a2sort), Math.round(totals.a3sort),
                 Math.round(totals.a1cons), Math.round(totals.a2cons), Math.round(totals.a3cons),
                 Math.round(totals.magReste), Math.round(totals.a1stock), Math.round(totals.a2stock), Math.round(totals.a3stock), Math.round(totals.total)]);
               const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
-              ws["!cols"] = [{wch:28}, {wch:7}, ...Array(15).fill({wch:10})];
-              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:16}},{s:{r:1,c:0},e:{r:1,c:16}}];
+              const NCOLS = 21;
+              ws["!cols"] = [{wch:28}, {wch:7}, ...Array(NCOLS-1).fill({wch:10})];
+              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:NCOLS}},{s:{r:1,c:0},e:{r:1,c:NCOLS}}];
               const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
-              for (let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:9},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c<2?"left":"center"},border}; }
-              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
-              for (let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:9,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
+              for (let c=0;c<=NCOLS;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:9},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c<2?"left":"center"},border}; }
+              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<=NCOLS;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
+              for (let c=0;c<=NCOLS;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:9,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
               const wb = XLSXStyle.utils.book_new();
               XLSXStyle.utils.book_append_sheet(wb, ws, "Stock Global");
               XLSXStyle.writeFile(wb, `stock-global-${fileDate}.xlsx`);
@@ -1952,12 +1961,14 @@ export default function Dashboard({ user, userInfo }) {
                         <tr style={{background:"#f5f5f7"}}>
                           <th rowSpan={2} style={{padding:"8px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
                           <th rowSpan={2} style={{padding:"8px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Unité</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#92400e",background:"#fef3c7"}}>📦 Stock Initial</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#15803d",background:"#dcfce7"}}>📥 Entrées</th>
                           <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>📤 Sorties</th>
                           <th colSpan={3} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#c2410c",background:"#fff7ed"}}>🔥 Consommation</th>
                           <th colSpan={5} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📊 Reste</th>
                         </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
+                          {["Mag","AB1","AB2","AB3"].map(h=><th key={"i"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fffbeb"}}>{h}</th>)}
                           {["Mag","AB1","AB2","AB3"].map(h=><th key={"e"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
                           {["Mag","AB1","AB2","AB3"].map(h=><th key={"s"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#faf5ff"}}>{h}</th>)}
                           {["AB1","AB2","AB3"].map(h=><th key={"c"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fff7ed"}}>{h}</th>)}
@@ -1971,6 +1982,7 @@ export default function Dashboard({ user, userInfo }) {
                             <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
                               <td style={{padding:"8px 12px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{r.product}</td>
                               <td style={{padding:"8px 8px",textAlign:"center",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
+                              {td(r.initMag,"#fffbeb")}{td(r.initA1,"#fffbeb")}{td(r.initA2,"#fffbeb")}{td(r.initA3,"#fffbeb")}
                               {td(r.magEnt,"#f0fdf4")}{td(r.a1.ent,"#f0fdf4")}{td(r.a2.ent,"#f0fdf4")}{td(r.a3.ent,"#f0fdf4")}
                               {td(r.magSort,"#faf5ff")}{td(r.a1.sort,"#faf5ff")}{td(r.a2.sort,"#faf5ff")}{td(r.a3.sort,"#faf5ff")}
                               {td(r.a1.cons,"#fff7ed")}{td(r.a2.cons,"#fff7ed")}{td(r.a3.cons,"#fff7ed")}
