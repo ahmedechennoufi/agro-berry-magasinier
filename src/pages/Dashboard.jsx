@@ -1607,15 +1607,35 @@ export default function Dashboard({ user, userInfo }) {
               return parseFloat(productInfo?.price) || 0;
             };
 
-            // MAG: lu tel quel depuis Firestore (pousse par le Manager) - jamais recalcule ici.
-            const magData = globalStockCentral?.data || null;
-            // Stock final par ferme: live actuel (meme calcFarmStock que "Mon Stock"), fiable.
+            // MAG: stock initial/final calcules directement (entrees-sorties), bornes a la MEME
+            // periode que Entrees/Sorties/Conso ci-dessous - garantit Init + Ent - Sort = Final.
+            // (Le stock magasin "live" pousse par le Manager reste affiche a part, en info.)
+            const magBefore = {}, magAtEnd = {};
+            allMovements.forEach(m => {
+              if (!m.date || !m.product) return;
+              const qty = parseFloat(m.quantity) || 0;
+              const delta = m.type === "entry" ? qty : m.type === "exit" ? -qty : 0;
+              if (delta === 0) return;
+              if (m.date < period.start) magBefore[m.product] = (magBefore[m.product]||0) + delta;
+              if (m.date <= period.end) magAtEnd[m.product] = (magAtEnd[m.product]||0) + delta;
+            });
+            // Stock final par ferme: calcule directement a la fin de la periode (pas "live aujourd'hui"),
+            // pour rester coherent avec Entrees/Sorties/Conso qui sont bornees a la meme periode.
+            const movesUntilEnd = allMovements.filter(m => m.date && m.date <= period.end);
+            const movesBeforeStart = allMovements.filter(m => m.date && m.date < period.start);
+            const ab1End = calcFarmStock(movesUntilEnd, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
+            const ab2End = calcFarmStock(movesUntilEnd, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
+            const ab3End = calcFarmStock(movesUntilEnd, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
+            const ab1Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
+            const ab2Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
+            const ab3Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
+            const mapOf = (arr) => { const m = {}; arr.forEach(s => m[s.product] = s.qty); return m; };
+            const ab1StockMap = mapOf(ab1End), ab2StockMap = mapOf(ab2End), ab3StockMap = mapOf(ab3End);
+            const ab1InitMap = mapOf(ab1Init), ab2InitMap = mapOf(ab2Init), ab3InitMap = mapOf(ab3Init);
+            // Stock live (aujourd'hui, toutes fermes) - utilise uniquement pour l'unite/prix de secours.
             const ab1 = calcFarmStock(allMovements, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
             const ab2 = calcFarmStock(allMovements, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
             const ab3 = calcFarmStock(allMovements, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
-            const ab1StockMap = {}; ab1.forEach(s => ab1StockMap[s.product] = s.qty);
-            const ab2StockMap = {}; ab2.forEach(s => ab2StockMap[s.product] = s.qty);
-            const ab3StockMap = {}; ab3.forEach(s => ab3StockMap[s.product] = s.qty);
 
             // Entrees / Consommation / Sorties PAR ferme (detail, pas regroupe), sur la periode
             // selectionnee - calcul simple et direct, sans logique de stock initial
@@ -1640,27 +1660,26 @@ export default function Dashboard({ user, userInfo }) {
             products.forEach(p => { productCat[p.name] = p.category || "AUTRES"; });
 
             const allNames = new Set([
-              ...(magData ? Object.keys(magData) : []),
+              ...(magData ? Object.keys(magData) : []), ...Object.keys(magAtEnd), ...Object.keys(magBefore),
               ...Object.keys(ab1StockMap), ...Object.keys(ab2StockMap), ...Object.keys(ab3StockMap),
               ...Object.keys(f1.ent), ...Object.keys(f1.cons), ...Object.keys(f1.sort),
               ...Object.keys(f2.ent), ...Object.keys(f2.cons), ...Object.keys(f2.sort),
               ...Object.keys(f3.ent), ...Object.keys(f3.cons), ...Object.keys(f3.sort),
             ]);
             let rows = [...allNames].map(name => {
-              const mag = Math.max(0, magData?.[name]?.quantity || 0);
+              const mag = Math.max(0, magAtEnd[name] || 0); // Stock Final Mag = a la fin de la periode (coherent), pas "live aujourd'hui"
+              const magLive = Math.max(0, magData?.[name]?.quantity || 0); // reference "maintenant", pour info seulement
               const magEnt = magPeriod.ent[name] || 0, magSort = magPeriod.sort[name] || 0;
+              const initMag = Math.max(0, magBefore[name] || 0);
               const unit = ab1.find(s=>s.product===name)?.unit || ab2.find(s=>s.product===name)?.unit || ab3.find(s=>s.product===name)?.unit || "KG";
               const a1 = { ent: f1.ent[name]||0, cons: f1.cons[name]||0, sort: f1.sort[name]||0, stock: ab1StockMap[name]||0 };
               const a2 = { ent: f2.ent[name]||0, cons: f2.cons[name]||0, sort: f2.sort[name]||0, stock: ab2StockMap[name]||0 };
               const a3 = { ent: f3.ent[name]||0, cons: f3.cons[name]||0, sort: f3.sort[name]||0, stock: ab3StockMap[name]||0 };
+              const initA1 = ab1InitMap[name] || 0, initA2 = ab2InitMap[name] || 0, initA3 = ab3InitMap[name] || 0;
               const price = magData?.[name]?.price || getPrice(name);
               const total = mag + a1.stock + a2.stock + a3.stock;
-              const initMag = mag - magEnt + magSort;
-              const initA1 = a1.stock - a1.ent + a1.sort + a1.cons;
-              const initA2 = a2.stock - a2.ent + a2.sort + a2.cons;
-              const initA3 = a3.stock - a3.ent + a3.sort + a3.cons;
-              return { product: name, unit, category: productCat[name] || "AUTRES", mag, magEnt, magSort, initMag, initA1, initA2, initA3, a1, a2, a3, total, price };
-            }).filter(r => r.total > 0.001 || r.a1.ent>0.001 || r.a1.cons>0.001 || r.a1.sort>0.001 || r.a2.ent>0.001 || r.a2.cons>0.001 || r.a2.sort>0.001 || r.a3.ent>0.001 || r.a3.cons>0.001 || r.a3.sort>0.001 || r.magEnt>0.001 || r.magSort>0.001);
+              return { product: name, unit, category: productCat[name] || "AUTRES", mag, magLive, magEnt, magSort, initMag, initA1, initA2, initA3, a1, a2, a3, total, price };
+            }).filter(r => r.total > 0.001 || r.a1.ent>0.001 || r.a1.cons>0.001 || r.a1.sort>0.001 || r.a2.ent>0.001 || r.a2.cons>0.001 || r.a2.sort>0.001 || r.a3.ent>0.001 || r.a3.cons>0.001 || r.a3.sort>0.001 || r.magEnt>0.001 || r.magSort>0.001 || r.initMag>0.001);
             if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
             rows.sort((a,b) => a.product.localeCompare(b.product));
 
@@ -1938,7 +1957,7 @@ export default function Dashboard({ user, userInfo }) {
                 )}
                 {magData && globalStockCentral?.updatedAt && (
                   <p style={{fontSize:11,color:"#86868b",marginTop:-8,marginBottom:16}}>
-                    Magasin mis à jour le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager) · Entrées/Sorties/Conso — période : {period.start.split("-").reverse().join("/")} → {period.end.split("-").reverse().join("/")}
+                    Période sélectionnée : {period.start.split("-").reverse().join("/")} → {period.end.split("-").reverse().join("/")} · Stock Initial + Entrées − Sorties − Conso = Stock Final (garanti cohérent) · Magasin synchronisé le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager)
                   </p>
                 )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
