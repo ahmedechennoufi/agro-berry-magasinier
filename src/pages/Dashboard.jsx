@@ -489,8 +489,6 @@ export default function Dashboard({ user, userInfo }) {
   const [comparisonFarm, setComparisonFarm] = useState("AGRO BERRY 1");
   const [comparisonDate, setComparisonDate] = useState(() => new Date().toISOString().slice(0,10));
   const [physicalValues, setPhysicalValues] = useState({}); // { productName: "valeur saisie (string)" }
-  const [savingInventory, setSavingInventory] = useState(false);
-  const [saveInventoryMsg, setSaveInventoryMsg] = useState(null); // {type:'success'|'error', text}
   const [reportMonth, setReportMonth] = useState("AOUT");
   const [loadingStock, setLoadingStock] = useState(true);
   const [search, setSearch] = useState("");
@@ -1708,7 +1706,7 @@ export default function Dashboard({ user, userInfo }) {
                       </select>
                     )}
                     {!comparisonMode && <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportGlobal}>📊 Export Excel</button>}
-                    <button className="refresh-btn" style={{background:comparisonMode?"#6b7280":"#8b5cf6",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={() => { setComparisonMode(m => !m); setSaveInventoryMsg(null); }}>
+                    <button className="refresh-btn" style={{background:comparisonMode?"#6b7280":"#8b5cf6",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={() => { setComparisonMode(m => !m); setPhysicalValues({}); }}>
                       {comparisonMode ? "← Retour" : "📋 Comparaison Physique"}
                     </button>
                   </div>
@@ -1733,52 +1731,40 @@ export default function Dashboard({ user, userInfo }) {
                     setPhysicalValues(prev => ({ ...prev, [product]: value }));
                   };
 
-                  const handleSaveInventory = async () => {
-                    if (!window.confirm(`Enregistrer un nouvel inventaire physique pour ${comparisonFarm} daté du ${comparisonDate} ?\n\nÇa deviendra la nouvelle base de calcul du stock pour cette ferme à partir de cette date.`)) return;
-                    setSavingInventory(true);
-                    setSaveInventoryMsg(null);
-                    try {
-                      const data = {};
-                      farmArr.forEach(s => {
-                        const rawInput = physicalValues[s.product];
-                        data[s.product] = rawInput === undefined || rawInput === "" ? s.qty : (parseFloat(rawInput.replace(",", ".")) || 0);
-                      });
-                      const id = Date.now();
-                      await setDoc(doc(db, "physicalInventories", String(id)), {
-                        id, farm: comparisonFarm, date: comparisonDate, data,
-                        notes: `Inventaire physique saisi via app Magasinier (comparaison) - ${nbModified} produit(s) corrigé(s)`,
-                      });
-                      setSaveInventoryMsg({ type: "success", text: `✅ Inventaire enregistré (${Object.keys(data).length} produits). Les valeurs restent affichées ci-dessous pour vérification — le théorique va se mettre à jour automatiquement dans quelques secondes.` });
-                    } catch (err) {
-                      console.error(err);
-                      setSaveInventoryMsg({ type: "error", text: "❌ Échec de l'enregistrement: " + err.message });
-                    }
-                    setSavingInventory(false);
+                  const handleExportComparison = () => {
+                    const fileDate = new Date().toISOString().split("T")[0];
+                    const aoa = [
+                      [`Comparaison Physique — ${comparisonFarm} — ${comparisonDate}`],
+                      ["Produit","Unité","Théorique","Physique saisi","Écart"],
+                      ...compRows.map(r => [r.product, r.unit, r.theo, r.rawInput !== undefined && r.rawInput !== "" ? r.phys : "", r.ecart]),
+                    ];
+                    const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
+                    ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:4}}];
+                    ws["!cols"] = [{wch:28},{wch:8},{wch:12},{wch:14},{wch:10}];
+                    const wb = XLSXStyle.utils.book_new();
+                    XLSXStyle.utils.book_append_sheet(wb, ws, "Comparaison");
+                    XLSXStyle.writeFile(wb, `comparaison-physique-${farmKeyShort}-${fileDate}.xlsx`);
                   };
 
                   return (
                     <>
                       <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap",marginBottom:14}}>
-                        <select className="form-input" style={{maxWidth:220}} value={comparisonFarm} onChange={e => { setComparisonFarm(e.target.value); setPhysicalValues({}); setSaveInventoryMsg(null); }}>
+                        <select className="form-input" style={{maxWidth:220}} value={comparisonFarm} onChange={e => { setComparisonFarm(e.target.value); setPhysicalValues({}); }}>
                           <option value="AGRO BERRY 1">🌿 AGRO BERRY 1</option>
                           <option value="AGRO BERRY 2">🫐 AGRO BERRY 2</option>
                           <option value="AGRO BERRY 3">🫐 AGRO BERRY 3</option>
                         </select>
                         <input type="date" className="form-input" style={{maxWidth:170}} value={comparisonDate} onChange={e => setComparisonDate(e.target.value)} />
                         <input className="stock-search" style={{flex:1,minWidth:200}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
+                        <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportComparison}>📊 Export Excel</button>
                       </div>
                       <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:14}}>
                         <div className="stat-card"><div className="stat-label">🌾 Ferme</div><div className="stat-value" style={{fontSize:18}}>{farmKeyShort}</div></div>
-                        <div className="stat-card"><div className="stat-label">✏️ Produits modifiés</div><div className="stat-value">{nbModified}</div></div>
+                        <div className="stat-card"><div className="stat-label">✏️ Produits comparés</div><div className="stat-value">{nbModified}</div></div>
                         <div className="stat-card"><div className="stat-label">💰 Écart total</div><div className="stat-value" style={{color: ecartTotalValue < 0 ? "#dc2626" : ecartTotalValue > 0 ? "#16a34a" : undefined}}>{Math.round(ecartTotalValue).toLocaleString("fr-FR")} MAD</div></div>
                       </div>
-                      {saveInventoryMsg && (
-                        <div style={{marginBottom:14,padding:"10px 14px",borderRadius:10,fontSize:13,fontWeight:600,background:saveInventoryMsg.type==="success"?"#dcfce7":"#fee2e2",color:saveInventoryMsg.type==="success"?"#15803d":"#dc2626"}}>
-                          {saveInventoryMsg.text}
-                        </div>
-                      )}
                       <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:12,color:"#1e40af"}}>
-                        💡 Saisis la quantité que tu comptes physiquement pour chaque produit — les champs sont pré-remplis avec le théorique, donc les produits que tu ne touches pas restent inchangés. Clique "Enregistrer" à la fin.
+                        💡 Ceci est un outil de <strong>comparaison uniquement</strong> — rien n'est enregistré ni modifié dans le stock. Saisis les quantités que tu comptes physiquement pour voir l'écart ; ferme cet écran ou exporte en Excel quand tu as fini, tes saisies ne seront pas conservées après.
                       </div>
                       <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16,marginBottom:14}}>
                         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -1812,14 +1798,6 @@ export default function Dashboard({ user, userInfo }) {
                           </tbody>
                         </table>
                       </div>
-                      <button
-                        className="refresh-btn"
-                        disabled={savingInventory || nbModified === 0}
-                        style={{background: nbModified===0 ? "#d1d5db" : "#16a34a", border:"none", color:"#fff", fontWeight:700, padding:"12px 24px", fontSize:14, opacity: savingInventory?0.6:1, cursor: nbModified===0?"not-allowed":"pointer"}}
-                        onClick={handleSaveInventory}
-                      >
-                        {savingInventory ? "⏳ Enregistrement..." : `💾 Enregistrer l'inventaire physique (${nbModified} produit(s))`}
-                      </button>
                     </>
                   );
                 })() : (<>
