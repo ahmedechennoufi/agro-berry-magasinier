@@ -1604,12 +1604,15 @@ export default function Dashboard({ user, userInfo }) {
             // (c'est ce genre de logique complexe qui causait les divergences precedentes).
             const mkEmpty = () => ({ ent:{}, cons:{}, sort:{} });
             const f1 = mkEmpty(), f2 = mkEmpty(), f3 = mkEmpty();
+            const magPeriod = { ent:{}, sort:{} }; // Entrees = achats fournisseurs, Sorties = livraisons vers fermes
             allMovements.forEach(m => {
               if (!m.date || m.date < period.start || m.date > period.end || !m.product) return;
+              const qty = parseFloat(m.quantity) || 0;
+              if (m.type === "entry") magPeriod.ent[m.product] = (magPeriod.ent[m.product]||0) + qty;
+              if (m.type === "exit") magPeriod.sort[m.product] = (magPeriod.sort[m.product]||0) + qty;
               const farm = m.farm || "";
               const bucket = farm.includes("1") ? f1 : farm.includes("2") ? f2 : farm.includes("3") ? f3 : null;
               if (!bucket) return;
-              const qty = parseFloat(m.quantity) || 0;
               if (m.type === "exit" || m.type === "transfer-in") bucket.ent[m.product] = (bucket.ent[m.product]||0) + qty;
               else if (m.type === "consumption") bucket.cons[m.product] = (bucket.cons[m.product]||0) + qty;
               else if (m.type === "transfer-out") bucket.sort[m.product] = (bucket.sort[m.product]||0) + qty;
@@ -1627,23 +1630,27 @@ export default function Dashboard({ user, userInfo }) {
             ]);
             let rows = [...allNames].map(name => {
               const mag = Math.max(0, magData?.[name]?.quantity || 0);
+              const magEnt = magPeriod.ent[name] || 0, magSort = magPeriod.sort[name] || 0;
               const unit = ab1.find(s=>s.product===name)?.unit || ab2.find(s=>s.product===name)?.unit || ab3.find(s=>s.product===name)?.unit || "KG";
               const a1 = { ent: f1.ent[name]||0, cons: f1.cons[name]||0, sort: f1.sort[name]||0, stock: ab1StockMap[name]||0 };
               const a2 = { ent: f2.ent[name]||0, cons: f2.cons[name]||0, sort: f2.sort[name]||0, stock: ab2StockMap[name]||0 };
               const a3 = { ent: f3.ent[name]||0, cons: f3.cons[name]||0, sort: f3.sort[name]||0, stock: ab3StockMap[name]||0 };
               const price = magData?.[name]?.price || getPrice(name);
               const total = mag + a1.stock + a2.stock + a3.stock;
-              return { product: name, unit, category: productCat[name] || "AUTRES", mag, a1, a2, a3, total, price };
-            }).filter(r => r.total > 0.001 || r.a1.ent>0.001 || r.a1.cons>0.001 || r.a1.sort>0.001 || r.a2.ent>0.001 || r.a2.cons>0.001 || r.a2.sort>0.001 || r.a3.ent>0.001 || r.a3.cons>0.001 || r.a3.sort>0.001);
+              return { product: name, unit, category: productCat[name] || "AUTRES", mag, magEnt, magSort, a1, a2, a3, total, price };
+            }).filter(r => r.total > 0.001 || r.a1.ent>0.001 || r.a1.cons>0.001 || r.a1.sort>0.001 || r.a2.ent>0.001 || r.a2.cons>0.001 || r.a2.sort>0.001 || r.a3.ent>0.001 || r.a3.cons>0.001 || r.a3.sort>0.001 || r.magEnt>0.001 || r.magSort>0.001);
             if (globalStockSearch) rows = rows.filter(r => r.product.toLowerCase().includes(globalStockSearch.toLowerCase()));
             rows.sort((a,b) => a.product.localeCompare(b.product));
 
             const totals = rows.reduce((t,r) => {
-              t.mag += r.mag*r.price; t.total += r.total*r.price;
+              t.magReste += r.mag*r.price; t.total += r.total*r.price;
+              t.magEnt += r.magEnt*r.price; t.magSort += r.magSort*r.price;
               t.a1stock += r.a1.stock*r.price; t.a2stock += r.a2.stock*r.price; t.a3stock += r.a3.stock*r.price;
-              t.consTot += (r.a1.cons+r.a2.cons+r.a3.cons)*r.price;
+              t.a1ent += r.a1.ent*r.price; t.a2ent += r.a2.ent*r.price; t.a3ent += r.a3.ent*r.price;
+              t.a1sort += r.a1.sort*r.price; t.a2sort += r.a2.sort*r.price; t.a3sort += r.a3.sort*r.price;
+              t.a1cons += r.a1.cons*r.price; t.a2cons += r.a2.cons*r.price; t.a3cons += r.a3.cons*r.price;
               return t;
-            }, { mag:0, total:0, a1stock:0, a2stock:0, a3stock:0, consTot:0 });
+            }, { magReste:0, magEnt:0, magSort:0, total:0, a1stock:0, a2stock:0, a3stock:0, a1ent:0, a2ent:0, a3ent:0, a1sort:0, a2sort:0, a3sort:0, a1cons:0, a2cons:0, a3cons:0 });
             const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
             const fmtQty = (n) => (!n ? "–" : (n % 1 === 0 ? n : n.toFixed(2)));
 
@@ -1651,28 +1658,31 @@ export default function Dashboard({ user, userInfo }) {
               const fileDate = new Date().toISOString().split("T")[0];
               const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
               const aoa = [];
-              aoa.push(["Stock Global — Magasin + AB1 + AB2 + AB3 (détail)", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-              aoa.push([`Entrées/Conso/Sorties par ferme sur ${period.label}`, "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-              aoa.push(["Produit","Catégorie","Unité","Prix","Magasin",
-                "AB1 Entrées","AB1 Conso","AB1 Sorties","AB1 Stock Final",
-                "AB2 Entrées","AB2 Conso","AB2 Sorties","AB2 Stock Final",
-                "AB3 Entrées","AB3 Conso","AB3 Sorties","AB3 Stock Final","TOTAL"]);
-              rows.forEach(r => aoa.push([r.product, r.category, r.unit, Math.round(r.price*100)/100, r.mag,
-                r.a1.ent, r.a1.cons, r.a1.sort, r.a1.stock,
-                r.a2.ent, r.a2.cons, r.a2.sort, r.a2.stock,
-                r.a3.ent, r.a3.cons, r.a3.sort, r.a3.stock, r.total]));
+              aoa.push(["Stock Global — groupé par métrique", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+              aoa.push([`Entrées/Sorties/Conso sur ${period.label} · Reste = actuel`, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+              aoa.push(["Produit","Unité",
+                "Ent. Magasin","Ent. AB1","Ent. AB2","Ent. AB3",
+                "Sort. Magasin","Sort. AB1","Sort. AB2","Sort. AB3",
+                "Conso AB1","Conso AB2","Conso AB3",
+                "Reste Magasin","Reste AB1","Reste AB2","Reste AB3","Reste TOTAL"]);
+              rows.forEach(r => aoa.push([r.product, r.unit,
+                r.magEnt, r.a1.ent, r.a2.ent, r.a3.ent,
+                r.magSort, r.a1.sort, r.a2.sort, r.a3.sort,
+                r.a1.cons, r.a2.cons, r.a3.cons,
+                r.mag, r.a1.stock, r.a2.stock, r.a3.stock, r.total]));
               const totRowIdx = aoa.length;
-              aoa.push(["", "", "", "TOTAL (MAD)", Math.round(totals.mag),
-                "", "", "", Math.round(totals.a1stock),
-                "", "", "", Math.round(totals.a2stock),
-                "", "", "", Math.round(totals.a3stock), Math.round(totals.total)]);
+              aoa.push(["", "TOTAL (MAD)",
+                Math.round(totals.magEnt), Math.round(totals.a1ent), Math.round(totals.a2ent), Math.round(totals.a3ent),
+                Math.round(totals.magSort), Math.round(totals.a1sort), Math.round(totals.a2sort), Math.round(totals.a3sort),
+                Math.round(totals.a1cons), Math.round(totals.a2cons), Math.round(totals.a3cons),
+                Math.round(totals.magReste), Math.round(totals.a1stock), Math.round(totals.a2stock), Math.round(totals.a3stock), Math.round(totals.total)]);
               const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
-              ws["!cols"] = [{wch:28},{wch:14},{wch:7},{wch:8}, ...Array(13).fill({wch:10})];
-              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:17}},{s:{r:1,c:0},e:{r:1,c:17}}];
+              ws["!cols"] = [{wch:28}, {wch:7}, ...Array(15).fill({wch:10})];
+              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:16}},{s:{r:1,c:0},e:{r:1,c:16}}];
               const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
-              for (let c=0;c<18;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:9},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
-              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<18;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0.##":undefined}; } }
-              for (let c=0;c<18;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:9,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=4?"#,##0":undefined}; }
+              for (let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:9},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c<2?"left":"center"},border}; }
+              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
+              for (let c=0;c<17;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:9,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c<2?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
               const wb = XLSXStyle.utils.book_new();
               XLSXStyle.utils.book_append_sheet(wb, ws, "Stock Global");
               XLSXStyle.writeFile(wb, `stock-global-${fileDate}.xlsx`);
@@ -1683,7 +1693,7 @@ export default function Dashboard({ user, userInfo }) {
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
                   <div>
                     <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>🌍 Stock Global</h2>
-                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Magasin central + détail par ferme (AB1, AB2, AB3)</p>
+                    <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>Groupé par métrique — Magasin + AGB1 + AGB2 + AGB3</p>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     <select className="form-input" style={{maxWidth:200}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
@@ -1699,15 +1709,15 @@ export default function Dashboard({ user, userInfo }) {
                 )}
                 {magData && globalStockCentral?.updatedAt && (
                   <p style={{fontSize:11,color:"#86868b",marginTop:-8,marginBottom:16}}>
-                    Magasin mis à jour le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager) · Détail fermes — période : {period.start.split("-").reverse().join("/")} → {period.end.split("-").reverse().join("/")}
+                    Magasin mis à jour le {new Date(globalStockCentral.updatedAt).toLocaleString("fr-FR")} (via Manager) · Entrées/Sorties/Conso — période : {period.start.split("-").reverse().join("/")} → {period.end.split("-").reverse().join("/")}
                   </p>
                 )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
-                  <div className="stat-card"><div className="stat-label">🏬 Magasin</div><div className="stat-value">{fmt(totals.mag)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🏬 Magasin (reste)</div><div className="stat-value">{fmt(totals.magReste)}</div></div>
                   <div className="stat-card"><div className="stat-label">🌿 AGB1 (reste)</div><div className="stat-value">{fmt(totals.a1stock)}</div></div>
                   <div className="stat-card"><div className="stat-label">🫐 AGB2 (reste)</div><div className="stat-value">{fmt(totals.a2stock)}</div></div>
                   <div className="stat-card"><div className="stat-label">🫐 AGB3 (reste)</div><div className="stat-value">{fmt(totals.a3stock)}</div></div>
-                  <div className="stat-card"><div className="stat-label">🔥 Conso totale</div><div className="stat-value red">{fmt(totals.consTot)}</div></div>
+                  <div className="stat-card"><div className="stat-label">🔥 Conso totale</div><div className="stat-value red">{fmt(totals.a1cons+totals.a2cons+totals.a3cons)}</div></div>
                   <div className="stat-card"><div className="stat-label">📊 TOTAL</div><div className="stat-value">{fmt(totals.total)}</div></div>
                 </div>
                 <input className="stock-search" style={{marginBottom:12,width:"100%",boxSizing:"border-box"}} placeholder="Rechercher un produit..." value={globalStockSearch} onChange={e => setGlobalStockSearch(e.target.value)} />
@@ -1717,21 +1727,21 @@ export default function Dashboard({ user, userInfo }) {
                   <div className="empty-state"><div className="empty-icon">🌍</div><div className="empty-text">Aucun produit en stock</div></div>
                 ) : (
                   <div style={{overflowX:"auto",background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:16}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1450}}>
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1500}}>
                       <thead>
                         <tr style={{background:"#f5f5f7"}}>
                           <th rowSpan={2} style={{padding:"8px 12px",textAlign:"left",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Article</th>
                           <th rowSpan={2} style={{padding:"8px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#6e6e73",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>Unité</th>
-                          <th rowSpan={2} style={{padding:"8px 8px",textAlign:"right",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>🏬 Magasin</th>
-                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#16a34a",background:"#dcfce7"}}>🌿 AGB1</th>
-                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#0891b2",background:"#cffafe"}}>🫐 AGB2</th>
-                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>🫐 AGB3</th>
-                          <th rowSpan={2} style={{padding:"8px 10px",textAlign:"right",fontSize:10,fontWeight:700,color:"#92400e",background:"#fef3c7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>📊 Stock Final<br/><span style={{fontWeight:400,fontSize:8}}>(Magasin+fermes)</span></th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#15803d",background:"#dcfce7"}}>📥 Entrées</th>
+                          <th colSpan={4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#7e22ce",background:"#f3e8ff"}}>📤 Sorties</th>
+                          <th colSpan={3} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#c2410c",background:"#fff7ed"}}>🔥 Consommation</th>
+                          <th colSpan={5} style={{padding:"6px 8px",textAlign:"center",fontSize:10,fontWeight:700,color:"#1d4ed8",background:"#dbeafe"}}>📊 Reste</th>
                         </tr>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
-                          {["Ent.","Conso","Sort.","Reste"].map(h=><th key={"1"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
-                          {["Ent.","Conso","Sort.","Reste"].map(h=><th key={"2"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#ecfeff"}}>{h}</th>)}
-                          {["Ent.","Conso","Sort.","Reste"].map(h=><th key={"3"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#faf5ff"}}>{h}</th>)}
+                          {["Mag","AB1","AB2","AB3"].map(h=><th key={"e"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#f0fdf4"}}>{h}</th>)}
+                          {["Mag","AB1","AB2","AB3"].map(h=><th key={"s"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#faf5ff"}}>{h}</th>)}
+                          {["AB1","AB2","AB3"].map(h=><th key={"c"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#fff7ed"}}>{h}</th>)}
+                          {["Mag","AB1","AB2","AB3","TOT"].map(h=><th key={"r"+h} style={{padding:"4px 6px",fontSize:9,fontWeight:600,color:"#6e6e73",textAlign:"right",background:"#eff6ff"}}>{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
@@ -1741,11 +1751,10 @@ export default function Dashboard({ user, userInfo }) {
                             <tr key={r.product} style={{borderBottom:"1px solid rgba(0,0,0,0.05)"}}>
                               <td style={{padding:"8px 12px",fontWeight:600,color:"#1d1d1f",whiteSpace:"nowrap"}}>{r.product}</td>
                               <td style={{padding:"8px 8px",textAlign:"center",color:"#86868b"}}>{cleanUnit(r.unit)}</td>
-                              {td(r.mag,"#dbeafe",true)}
-                              {td(r.a1.ent,"#f0fdf4")}{td(r.a1.cons,"#f0fdf4")}{td(r.a1.sort,"#f0fdf4")}{td(r.a1.stock,"#dcfce7",true)}
-                              {td(r.a2.ent,"#ecfeff")}{td(r.a2.cons,"#ecfeff")}{td(r.a2.sort,"#ecfeff")}{td(r.a2.stock,"#cffafe",true)}
-                              {td(r.a3.ent,"#faf5ff")}{td(r.a3.cons,"#faf5ff")}{td(r.a3.sort,"#faf5ff")}{td(r.a3.stock,"#f3e8ff",true)}
-                              {td(r.total,"#fef3c7",true)}
+                              {td(r.magEnt,"#f0fdf4")}{td(r.a1.ent,"#f0fdf4")}{td(r.a2.ent,"#f0fdf4")}{td(r.a3.ent,"#f0fdf4")}
+                              {td(r.magSort,"#faf5ff")}{td(r.a1.sort,"#faf5ff")}{td(r.a2.sort,"#faf5ff")}{td(r.a3.sort,"#faf5ff")}
+                              {td(r.a1.cons,"#fff7ed")}{td(r.a2.cons,"#fff7ed")}{td(r.a3.cons,"#fff7ed")}
+                              {td(r.mag,"#eff6ff",true)}{td(r.a1.stock,"#eff6ff",true)}{td(r.a2.stock,"#eff6ff",true)}{td(r.a3.stock,"#eff6ff",true)}{td(r.total,"#dbeafe",true)}
                             </tr>
                           );
                         })}
