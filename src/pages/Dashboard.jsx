@@ -56,6 +56,7 @@ const FARM_THEMES = {
 
 const ALL_MENUS = [
   { id:"stock",       label:"Mon Stock",    icon:"◈", color:"#4ade80", farms: null },
+  { id:"debuginv", label:"🔧 Debug Inventaires", icon:"🔧", color:"#dc2626", farms: null },
   { id:"consumption", label:"Consommation", icon:"◉", color:"#f87171", farms: null },
   { id:"transfer",    label:"Transfert",    icon:"⇌", color:"#a78bfa", farms: null },
   { id:"history",     label:"Mouvements",   icon:"◷", color:"#94a3b8", farms: null },
@@ -1190,6 +1191,48 @@ export default function Dashboard({ user, userInfo }) {
           </div>
 
           {/* STOCK */}
+          {active === "debuginv" && (() => {
+            const handleDeleteInv = async (inv) => {
+              if (!window.confirm(`Supprimer definitivement cet inventaire de Firestore ?\n\n${inv.farm} — ${inv.date}\nid: ${inv.id}`)) return;
+              try {
+                await deleteDoc(doc(db, "physicalInventories", String(inv.id)));
+                window.alert("✅ Supprimé de Firestore. Recharge la page pour confirmer.");
+              } catch (err) {
+                window.alert("❌ Échec: " + err.message);
+              }
+            };
+            return (
+              <div className="page">
+                <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 4px",color:"#1d1d1f"}}>🔧 Debug Inventaires (brut, Firestore direct)</h2>
+                <p style={{fontSize:12,color:"#86868b",margin:"0 0 16px"}}>{physicalInventories.length} inventaire(s) trouvé(s) dans Firestore — TOUS, y compris les orphelins jamais nettoyés.</p>
+                {physicalInventories.length === 0 ? (
+                  <div className="empty-state"><div className="empty-icon">🔧</div><div className="empty-text">Aucun inventaire physique dans Firestore</div></div>
+                ) : (
+                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                    {physicalInventories.map((inv, i) => {
+                      const nbProducts = Object.keys(inv.data || {}).length;
+                      return (
+                        <div key={i} style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:16}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{inv.farm || "(farm manquant)"} — date: <span style={{color:"#dc2626"}}>{inv.date || "(date manquante)"}</span></div>
+                              <div style={{fontSize:12,color:"#6e6e73",marginBottom:8}}>id: {inv.id} · {nbProducts} produits</div>
+                              <div style={{fontSize:12,fontFamily:"'Space Mono',monospace",background:"#f5f5f7",padding:10,borderRadius:8}}>
+                                {inv.data?.["HUWA SAN"] !== undefined && <div style={{color:"#16a34a",fontWeight:700}}>HUWA SAN: {inv.data["HUWA SAN"]}</div>}
+                                {inv.data?.["ACIDE PHOSPHORIQUE"] !== undefined && <div style={{color:"#16a34a",fontWeight:700}}>ACIDE PHOSPHORIQUE: {inv.data["ACIDE PHOSPHORIQUE"]}</div>}
+                              </div>
+                            </div>
+                            <button onClick={() => handleDeleteInv(inv)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>🗑️ Supprimer</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {active === "stock" && (
             <div className="page">
               <div className="stock-stats">
