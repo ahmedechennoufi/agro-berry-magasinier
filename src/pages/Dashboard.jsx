@@ -90,7 +90,17 @@ const MONTH_PERIODS = {
 // mouvements de la période pour obtenir Entrées / Sorties / Consommation / Stock Final.
 function getFarmConsumptionReport(movements, farmName, physicalInventories, stockInitialForFarm, start, end) {
   const movementsBeforeStart = (movements || []).filter(m => m.date && m.date < start);
-  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, stockInitialForFarm || [], physicalInventories);
+  const movementsUntilEnd = (movements || []).filter(m => m.date && m.date <= end);
+  // IMPORTANT: ne considerer comme "inventaire de depart" que ceux dates STRICTEMENT avant le
+  // debut de periode - sinon un inventaire tombant en plein dans le mois (ex: 25/08 pour un
+  // rapport d'aout) serait pris a tort comme base du Stock Initial (qui doit refleter fin juillet).
+  const invsBeforeStart = (physicalInventories || []).filter(inv => inv.date && inv.date < start);
+  const invsUntilEnd = (physicalInventories || []).filter(inv => inv.date && inv.date <= end);
+  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, stockInitialForFarm || [], invsBeforeStart);
+  // Stock Final calcule independamment (pas juste Init + mouvements) pour bien prendre en compte
+  // un eventuel inventaire physique tombant PENDANT la periode (ex: 25/08) comme correction reelle.
+  const finalStockArr = calcFarmStock(movementsUntilEnd, farmName, stockInitialForFarm || [], invsUntilEnd);
+  const finalMap = {}; finalStockArr.forEach(s => { finalMap[s.product] = s.qty; });
 
   const rows = {};
   const ensure = (product, unit) => {
@@ -98,6 +108,7 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
     return rows[product];
   };
   initStockArr.forEach(s => { ensure(s.product, s.unit).init = s.qty; });
+  finalStockArr.forEach(s => { ensure(s.product, s.unit); });
 
   (movements || []).forEach(m => {
     if (!m.date || m.date < start || m.date > end) return;
@@ -112,7 +123,7 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
   });
 
   return Object.values(rows)
-    .map(r => ({ ...r, final: Math.max(0, r.init + r.ent - r.sort - r.cons) }))
+    .map(r => ({ ...r, final: Math.max(0, finalMap[r.product] !== undefined ? finalMap[r.product] : (r.init + r.ent - r.sort - r.cons)) }))
     .filter(r => r.init > 0.001 || r.ent > 0.001 || r.sort > 0.001 || r.cons > 0.001 || r.final > 0.001)
     .sort((a,b) => a.product.localeCompare(b.product));
 }
@@ -1656,12 +1667,17 @@ export default function Dashboard({ user, userInfo }) {
             // pour rester coherent avec Entrees/Sorties/Conso qui sont bornees a la meme periode.
             const movesUntilEnd = allMovements.filter(m => m.date && m.date <= period.end);
             const movesBeforeStart = allMovements.filter(m => m.date && m.date < period.start);
-            const ab1End = calcFarmStock(movesUntilEnd, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
-            const ab2End = calcFarmStock(movesUntilEnd, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
-            const ab3End = calcFarmStock(movesUntilEnd, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
-            const ab1Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], physicalInventories);
-            const ab2Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], physicalInventories);
-            const ab3Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], physicalInventories);
+            // IMPORTANT: un inventaire physique tombant PENDANT la periode (ex: 25/08 pour aout) ne
+            // doit compter que pour le Stock Final, jamais pour le Stock Initial (qui doit refleter
+            // la situation juste avant le debut de periode, donc uniquement les inventaires anterieurs).
+            const invsBeforeStart = (physicalInventories || []).filter(inv => inv.date && inv.date < period.start);
+            const invsUntilEnd = (physicalInventories || []).filter(inv => inv.date && inv.date <= period.end);
+            const ab1End = calcFarmStock(movesUntilEnd, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], invsUntilEnd);
+            const ab2End = calcFarmStock(movesUntilEnd, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], invsUntilEnd);
+            const ab3End = calcFarmStock(movesUntilEnd, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], invsUntilEnd);
+            const ab1Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 1", stockInitialAll.stockAB1 || [], invsBeforeStart);
+            const ab2Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 2", stockInitialAll.stockAB2 || [], invsBeforeStart);
+            const ab3Init = calcFarmStock(movesBeforeStart, "AGRO BERRY 3", stockInitialAll.stockAB3 || [], invsBeforeStart);
             const mapOf = (arr) => { const m = {}; arr.forEach(s => m[s.product] = s.qty); return m; };
             const ab1StockMap = mapOf(ab1End), ab2StockMap = mapOf(ab2End), ab3StockMap = mapOf(ab3End);
             const ab1InitMap = mapOf(ab1Init), ab2InitMap = mapOf(ab2Init), ab3InitMap = mapOf(ab3Init);
