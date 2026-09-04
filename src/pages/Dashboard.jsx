@@ -123,7 +123,15 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
   });
 
   return Object.values(rows)
-    .map(r => ({ ...r, final: Math.max(0, finalMap[r.product] !== undefined ? finalMap[r.product] : (r.init + r.ent - r.sort - r.cons)) }))
+    .map(r => {
+      const final = Math.max(0, finalMap[r.product] !== undefined ? finalMap[r.product] : (r.init + r.ent - r.sort - r.cons));
+      // Ajustement = correction absorbee par un inventaire physique tombant EN PLEIN dans la periode
+      // (ex: 25/08 pour un rapport d'aout). Sans cette colonne, Stock Initial + Entrees - Sorties -
+      // Conso ne correspondrait pas a Stock Final, ce qui semblerait incoherent alors que c'est le
+      // reflet d'une vraie correction terrain survenue en cours de mois.
+      const adjustment = Math.round((final - (r.init + r.ent - r.sort - r.cons)) * 100) / 100;
+      return { ...r, final, adjustment };
+    })
     .filter(r => r.init > 0.001 || r.ent > 0.001 || r.sort > 0.001 || r.cons > 0.001 || r.final > 0.001)
     .sort((a,b) => a.product.localeCompare(b.product));
 }
@@ -1549,8 +1557,8 @@ export default function Dashboard({ user, userInfo }) {
               const aoa = [];
               aoa.push([`Rapport Mensuel — ${farmShort} — ${period.label}`]);
               aoa.push([`Période : ${period.start.split("-").reverse().join("/")} → ${period.end.split("-").reverse().join("/")}`]);
-              aoa.push(["Produit","Unité","Stock Initial","Entrées","Sorties","Consommation","Stock Final"]);
-              rows.forEach(r => aoa.push([r.product, r.unit, r.init, r.ent, r.sort, r.cons, r.final]));
+              aoa.push(["Produit","Unité","Stock Initial","Entrées","Sorties","Consommation","Ajustement","Stock Final"]);
+              rows.forEach(r => aoa.push([r.product, r.unit, r.init, r.ent, r.sort, r.cons, r.adjustment || "", r.final]));
               const totRowIdx = aoa.length;
               const prixOf = (p) => getPrice(p);
               aoa.push(["", "TOTAL (MAD)",
@@ -1558,18 +1566,21 @@ export default function Dashboard({ user, userInfo }) {
                 Math.round(rows.reduce((s,r)=>s+r.ent*prixOf(r.product),0)),
                 Math.round(rows.reduce((s,r)=>s+r.sort*prixOf(r.product),0)),
                 Math.round(rows.reduce((s,r)=>s+r.cons*prixOf(r.product),0)),
+                Math.round(rows.reduce((s,r)=>s+(r.adjustment||0)*prixOf(r.product),0)),
                 Math.round(rows.reduce((s,r)=>s+r.final*prixOf(r.product),0))]);
               const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
-              ws["!cols"] = [{wch:28},{wch:8},{wch:13},{wch:11},{wch:11},{wch:13},{wch:12}];
-              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:6}},{s:{r:1,c:0},e:{r:1,c:6}}];
+              ws["!cols"] = [{wch:28},{wch:8},{wch:13},{wch:11},{wch:11},{wch:13},{wch:12},{wch:12}];
+              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}}];
               const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
-              for (let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:10},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
-              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
-              for (let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:10,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
+              for (let c=0;c<8;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:10},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
+              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<8;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
+              for (let c=0;c<8;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:10,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
               const wb = XLSXStyle.utils.book_new();
               XLSXStyle.utils.book_append_sheet(wb, ws, "Rapport Mensuel");
               XLSXStyle.writeFile(wb, `rapport-mensuel-${farmShort}-${fileDate}.xlsx`);
             };
+
+            const hasAnyAdjustment = rows.some(r => Math.abs(r.adjustment || 0) > 0.01);
 
             return (
               <div className="page">
@@ -1578,7 +1589,7 @@ export default function Dashboard({ user, userInfo }) {
                     <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>📊 Rapport Mensuel — {farmShort}</h2>
                     <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>
                       Période : <strong>{period.start.split("-").reverse().join("/")}</strong> → <strong>{period.end.split("-").reverse().join("/")}</strong>
-                      {" · "}Stock Initial + Entrées − Sorties − Conso = Stock Final
+                      {" · "}Stock Initial + Entrées − Sorties − Conso{hasAnyAdjustment ? " ± Ajustement" : ""} = Stock Final
                     </p>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1588,6 +1599,11 @@ export default function Dashboard({ user, userInfo }) {
                     <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportReport}>📊 Export Excel</button>
                   </div>
                 </div>
+                {hasAnyAdjustment && (
+                  <div style={{marginBottom:16,padding:"12px 16px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:13,color:"#1e40af"}}>
+                    ℹ️ Certains produits ont une colonne <strong>"Ajustement"</strong> non nulle : ça vient d'un inventaire physique tombé <strong>en plein dans le mois</strong> (pas au tout début), qui a corrigé le stock à cette date-là. C'est une vraie correction terrain, pas une erreur de calcul.
+                  </div>
+                )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
                   <div className="stat-card"><div className="stat-label">📦 Stock Initial</div><div className="stat-value">{fmt(totals.init)}</div></div>
                   <div className="stat-card"><div className="stat-label">📥 Entrées</div><div className="stat-value green">{fmt(totals.ent)}</div></div>
@@ -1605,7 +1621,7 @@ export default function Dashboard({ user, userInfo }) {
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
                       <thead>
                         <tr style={{background:"#f5f5f7",borderBottom:"1px solid rgba(0,0,0,0.08)"}}>
-                          {["Article","Unité","Stock Initial","Entrées","Sorties","Consommation","Stock Final"].map((h,i) => (
+                          {["Article","Unité","Stock Initial","Entrées","Sorties","Consommation","Ajustement","Stock Final"].map((h,i) => (
                             <th key={h} style={{padding:"10px 14px",textAlign:i===0?"left":"right",fontSize:10,fontWeight:700,color:"#6e6e73",textTransform:"uppercase",letterSpacing:"0.05em",whiteSpace:"nowrap"}}>{h}</th>
                           ))}
                         </tr>
@@ -1619,6 +1635,7 @@ export default function Dashboard({ user, userInfo }) {
                             <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.ent>0?"#16a34a":"#c7c7cc"}}>{r.ent>0?"+":""}{fmtQty(r.ent)}</td>
                             <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.sort>0?"#dc2626":"#c7c7cc"}}>{r.sort>0?"-":""}{fmtQty(r.sort)}</td>
                             <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color:r.cons>0?"#dc2626":"#c7c7cc"}}>{r.cons>0?"-":""}{fmtQty(r.cons)}</td>
+                            <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",color: Math.abs(r.adjustment||0)>0.01 ? (r.adjustment>0?"#0ea5e9":"#f59e0b") : "#c7c7cc",fontWeight: Math.abs(r.adjustment||0)>0.01?700:400}}>{Math.abs(r.adjustment||0)>0.01 ? `${r.adjustment>0?"+":""}${fmtQty(r.adjustment)}` : "–"}</td>
                             <td style={{padding:"10px 14px",textAlign:"right",fontFamily:"'Space Mono',monospace",fontWeight:700}}>{fmtQty(r.final)}</td>
                           </tr>
                         ))}
