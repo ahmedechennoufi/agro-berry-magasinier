@@ -1531,6 +1531,35 @@ export default function Dashboard({ user, userInfo }) {
             }, { init:0, ent:0, sort:0, cons:0, final:0 });
             const fmt = (n) => Math.round(n).toLocaleString("fr-FR") + " MAD";
             const fmtQty = (n) => (n % 1 === 0 ? n : n.toFixed(2));
+
+            const handleExportReport = () => {
+              const fileDate = new Date().toISOString().split("T")[0];
+              const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
+              const aoa = [];
+              aoa.push([`Rapport Mensuel — ${farmShort} — ${period.label}`]);
+              aoa.push([`Période : ${period.start.split("-").reverse().join("/")} → ${period.end.split("-").reverse().join("/")}`]);
+              aoa.push(["Produit","Unité","Stock Initial","Entrées","Sorties","Consommation","Stock Final"]);
+              rows.forEach(r => aoa.push([r.product, r.unit, r.init, r.ent, r.sort, r.cons, r.final]));
+              const totRowIdx = aoa.length;
+              const prixOf = (p) => getPrice(p);
+              aoa.push(["", "TOTAL (MAD)",
+                Math.round(rows.reduce((s,r)=>s+r.init*prixOf(r.product),0)),
+                Math.round(rows.reduce((s,r)=>s+r.ent*prixOf(r.product),0)),
+                Math.round(rows.reduce((s,r)=>s+r.sort*prixOf(r.product),0)),
+                Math.round(rows.reduce((s,r)=>s+r.cons*prixOf(r.product),0)),
+                Math.round(rows.reduce((s,r)=>s+r.final*prixOf(r.product),0))]);
+              const ws = XLSXStyle.utils.aoa_to_sheet(aoa);
+              ws["!cols"] = [{wch:28},{wch:8},{wch:13},{wch:11},{wch:11},{wch:13},{wch:12}];
+              ws["!merges"] = [{s:{r:0,c:0},e:{r:0,c:6}},{s:{r:1,c:0},e:{r:1,c:6}}];
+              const border = { top:{style:"thin",color:{rgb:BORDER}}, bottom:{style:"thin",color:{rgb:BORDER}}, left:{style:"thin",color:{rgb:BORDER}}, right:{style:"thin",color:{rgb:BORDER}} };
+              for (let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:2,c})]; if(cell) cell.s={font:{bold:true,color:{rgb:WHITE},sz:10},fill:{fgColor:{rgb:COFFEE}},alignment:{horizontal:c===0?"left":"center"},border}; }
+              for (let r=3;r<totRowIdx;r++){ for(let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r,c})]; if(cell) cell.s={font:{sz:9},fill:{fgColor:{rgb:r%2===0?WHITE:CREAM}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0.##":undefined}; } }
+              for (let c=0;c<7;c++){ const cell=ws[XLSXStyle.utils.encode_cell({r:totRowIdx,c})]; if(cell) cell.s={font:{bold:true,sz:10,color:{rgb:WHITE}},fill:{fgColor:{rgb:COFFEE_DARK}},alignment:{horizontal:c===0?"left":"right"},border,numFmt:c>=2?"#,##0":undefined}; }
+              const wb = XLSXStyle.utils.book_new();
+              XLSXStyle.utils.book_append_sheet(wb, ws, "Rapport Mensuel");
+              XLSXStyle.writeFile(wb, `rapport-mensuel-${farmShort}-${fileDate}.xlsx`);
+            };
+
             return (
               <div className="page">
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12,marginBottom:16}}>
@@ -1541,9 +1570,12 @@ export default function Dashboard({ user, userInfo }) {
                       {" · "}Stock Initial + Entrées − Sorties − Conso = Stock Final
                     </p>
                   </div>
-                  <select className="form-input" style={{maxWidth:220}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
-                    {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
-                  </select>
+                  <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                    <select className="form-input" style={{maxWidth:220}} value={reportMonth} onChange={e => setReportMonth(e.target.value)}>
+                      {Object.entries(MONTH_PERIODS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+                    </select>
+                    <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportReport}>📊 Export Excel</button>
+                  </div>
                 </div>
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
                   <div className="stat-card"><div className="stat-label">📦 Stock Initial</div><div className="stat-value">{fmt(totals.init)}</div></div>
