@@ -89,18 +89,13 @@ const MONTH_PERIODS = {
 // = stock de la ferme calculé juste avant `start`, puis additionne les
 // mouvements de la période pour obtenir Entrées / Sorties / Consommation / Stock Final.
 function getFarmConsumptionReport(movements, farmName, physicalInventories, stockInitialForFarm, start, end) {
-  // On cherche le DERNIER inventaire physique de la ferme date <= fin de periode. S'il tombe
-  // PENDANT la periode (ex: 25/08 pour un rapport d'aout), on l'utilise directement comme point
-  // de depart pour Stock Initial ET pour compter Entrees/Sorties/Conso (uniquement APRES cette
-  // date) - clair et exact, sans case "Ajustement" a interpreter.
-  const farmInvs = (physicalInventories || []).filter(inv => inv.farm === farmName && inv.date && inv.date <= end);
-  const latestInv = farmInvs.sort((a,b) => b.date.localeCompare(a.date))[0];
-  const usesMidPeriodInv = latestInv && latestInv.date >= start;
-  const effectiveStart = usesMidPeriodInv ? latestInv.date : start;
-
-  const movementsBeforeEffectiveStart = (movements || []).filter(m => m.date && m.date <= effectiveStart);
-  const invsBeforeOrAtEffectiveStart = (physicalInventories || []).filter(inv => inv.date && inv.date <= effectiveStart);
-  const initStockArr = calcFarmStock(movementsBeforeEffectiveStart, farmName, stockInitialForFarm || [], invsBeforeOrAtEffectiveStart);
+  // Stock Initial = TOUJOURS base sur le dernier inventaire physique STRICTEMENT AVANT le debut
+  // de periode (jamais un inventaire tombant pendant le mois, meme si plus recent). Stock Final
+  // = Stock Initial + Entrees - Sorties - Conso du MOIS ENTIER (01-31), calcul purement
+  // arithmetique, sans tenir compte d'un eventuel inventaire physique tombant en cours de periode.
+  const invsBeforeStart = (physicalInventories || []).filter(inv => inv.farm === farmName && inv.date && inv.date < start);
+  const movementsBeforeStart = (movements || []).filter(m => m.date && m.date < start);
+  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, stockInitialForFarm || [], invsBeforeStart);
 
   const rows = {};
   const ensure = (product, unit) => {
@@ -110,7 +105,7 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
   initStockArr.forEach(s => { ensure(s.product, s.unit).init = s.qty; });
 
   (movements || []).forEach(m => {
-    if (!m.date || m.date <= effectiveStart || m.date > end) return;
+    if (!m.date || m.date < start || m.date > end) return;
     if (m.farm !== farmName) return;
     const p = m.product;
     if (!p) return;
@@ -125,8 +120,8 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
     .map(r => ({ ...r, final: Math.max(0, r.init + r.ent - r.sort - r.cons) }))
     .filter(r => r.init > 0.001 || r.ent > 0.001 || r.sort > 0.001 || r.cons > 0.001 || r.final > 0.001)
     .sort((a,b) => a.product.localeCompare(b.product));
-  finalRows.effectiveStart = effectiveStart;
-  finalRows.usesMidPeriodInv = usesMidPeriodInv;
+  finalRows.effectiveStart = start;
+  finalRows.usesMidPeriodInv = false;
   return finalRows;
 }
 
