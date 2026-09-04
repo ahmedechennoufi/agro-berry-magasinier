@@ -1534,8 +1534,10 @@ export default function Dashboard({ user, userInfo }) {
               const productInfo = products.find(pp => pp.name?.toUpperCase() === productName?.toUpperCase());
               return parseFloat(productInfo?.price) || 0;
             };
-            const rows = getFarmConsumptionReport(allMovements, farmName, physicalInventories, stockInitialAll[farmKey] || [], period.start, period.end)
-              .filter(r => !stockSearch || r.product.toLowerCase().includes(stockSearch.toLowerCase()));
+            const reportResult = getFarmConsumptionReport(allMovements, farmName, physicalInventories, stockInitialAll[farmKey] || [], period.start, period.end);
+            const reportEffectiveStart = reportResult.effectiveStart;
+            const reportUsesMidPeriodInv = reportResult.usesMidPeriodInv;
+            const rows = reportResult.filter(r => !stockSearch || r.product.toLowerCase().includes(stockSearch.toLowerCase()));
             const totals = rows.reduce((t, r) => {
               const prix = getPrice(r.product);
               t.init += r.init * prix; t.ent += r.ent * prix; t.sort += r.sort * prix;
@@ -1550,7 +1552,7 @@ export default function Dashboard({ user, userInfo }) {
               const COFFEE_DARK="3E2C1F", COFFEE="6B4F35", CREAM="FFF8E7", WHITE="FFFFFF", BORDER="E8DFCE";
               const aoa = [];
               aoa.push([`Rapport Mensuel — ${farmShort} — ${period.label}`]);
-              aoa.push([`Période : ${rows.effectiveStart?.split("-").reverse().join("/")} → ${period.end.split("-").reverse().join("/")}`]);
+              aoa.push([`Période : ${reportEffectiveStart?.split("-").reverse().join("/")} → ${period.end.split("-").reverse().join("/")}`]);
               aoa.push(["Produit","Unité","Stock Initial","Entrées","Sorties","Consommation","Stock Final"]);
               rows.forEach(r => aoa.push([r.product, r.unit, r.init, r.ent, r.sort, r.cons, r.final]));
               const totRowIdx = aoa.length;
@@ -1579,7 +1581,7 @@ export default function Dashboard({ user, userInfo }) {
                   <div>
                     <h2 style={{fontSize:20,fontWeight:700,margin:0,color:"#1d1d1f"}}>📊 Rapport Mensuel — {farmShort}</h2>
                     <p style={{fontSize:12,color:"#86868b",margin:"4px 0 0"}}>
-                      Période : <strong>{rows.effectiveStart?.split("-").reverse().join("/")}</strong> → <strong>{period.end.split("-").reverse().join("/")}</strong>
+                      Période : <strong>{reportEffectiveStart?.split("-").reverse().join("/")}</strong> → <strong>{period.end.split("-").reverse().join("/")}</strong>
                       {" · "}Stock Initial + Entrées − Sorties − Conso = Stock Final
                     </p>
                   </div>
@@ -1590,9 +1592,9 @@ export default function Dashboard({ user, userInfo }) {
                     <button className="refresh-btn" style={{background:"#16a34a",border:"none",color:"#fff",fontWeight:600,whiteSpace:"nowrap"}} onClick={handleExportReport}>📊 Export Excel</button>
                   </div>
                 </div>
-                {rows.usesMidPeriodInv && (
+                {reportUsesMidPeriodInv && (
                   <div style={{marginBottom:16,padding:"12px 16px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:13,color:"#1e40af"}}>
-                    ℹ️ Un inventaire physique du <strong>{rows.effectiveStart?.split("-").reverse().join("/")}</strong> existe pour cette ferme — comme il tombe pendant le mois de {period.label.split(" ")[0]}, le rapport part directement de cette date (au lieu du 1er du mois) pour rester exact. Entrées/Sorties/Conso ne comptent donc que <strong>depuis le {rows.effectiveStart?.split("-").reverse().join("/")}</strong>.
+                    ℹ️ Un inventaire physique du <strong>{reportEffectiveStart?.split("-").reverse().join("/")}</strong> existe pour cette ferme — comme il tombe pendant le mois de {period.label.split(" ")[0]}, le rapport part directement de cette date (au lieu du 1er du mois) pour rester exact. Entrées/Sorties/Conso ne comptent donc que <strong>depuis le {reportEffectiveStart?.split("-").reverse().join("/")}</strong>.
                   </div>
                 )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
