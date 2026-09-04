@@ -1639,9 +1639,10 @@ export default function Dashboard({ user, userInfo }) {
               return parseFloat(productInfo?.price) || 0;
             };
 
-            // MAG: stock initial/final calcules directement (entrees-sorties), bornes a la MEME
-            // periode que Entrees/Sorties/Conso ci-dessous - garantit Init + Ent - Sort = Final.
-            // (Le stock magasin "live" pousse par le Manager reste affiche a part, en info.)
+            // MAG: donnee source (pousse par le Manager) - stock initial/final calcules directement
+            // (entrees-sorties), bornes a la MEME periode que Entrees/Sorties/Conso ci-dessous -
+            // garantit Init + Ent - Sort = Final. (Le stock magasin "live" reste affiche a part, en info.)
+            const magData = globalStockCentral?.data || null;
             const magBefore = {}, magAtEnd = {};
             allMovements.forEach(m => {
               if (!m.date || !m.product) return;
