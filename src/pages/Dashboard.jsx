@@ -63,6 +63,7 @@ const ALL_MENUS = [
   { id:"melanges",    label:"Mélanges",     icon:"⚗", color:"#06b6d4", farms: null },
   { id:"report",      label:"Rapport Mensuel", icon:"📊", color:"#8b5cf6", farms: null },
   { id:"globalstock", label:"Stock Global",  icon:"🌍", color:"#0ea5e9", farms: null },
+  { id:"debuginv", label:"🔧 Debug Inventaires", icon:"🔧", color:"#dc2626", farms: null },
 ];
 
 // Périodes mensuelles — mêmes bornes que le Manager (Consommation Fermes),
@@ -1640,6 +1641,50 @@ export default function Dashboard({ user, userInfo }) {
             );
           })()}
 
+
+          {active === "debuginv" && (() => {
+            const handleDeleteInv = async (inv) => {
+              if (!window.confirm(`Supprimer definitivement cet inventaire ?\n\n${inv.farm} — ${inv.date}\nid: ${inv.id}`)) return;
+              try {
+                await deleteDoc(doc(db, "physicalInventories", String(inv.id)));
+                window.alert("✅ Supprimé. Recharge la page pour voir la liste à jour.");
+              } catch (err) {
+                window.alert("❌ Échec: " + err.message);
+              }
+            };
+            return (
+              <div className="page">
+                <h2 style={{fontSize:20,fontWeight:700,margin:"0 0 4px",color:"#1d1d1f"}}>🔧 Debug Inventaires (brut, tel que lu depuis Firestore)</h2>
+                <p style={{fontSize:12,color:"#86868b",margin:"0 0 16px"}}>{physicalInventories.length} inventaire(s) physique(s) trouvé(s) dans Firestore — TOUS, y compris ceux invisibles dans le Manager.</p>
+                {physicalInventories.length === 0 ? (
+                  <div className="empty-state"><div className="empty-icon">🔧</div><div className="empty-text">Aucun inventaire physique dans Firestore</div></div>
+                ) : (
+                  <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                    {physicalInventories.map((inv, i) => {
+                      const nbProducts = Object.keys(inv.data || {}).length;
+                      const sampleKeys = Object.keys(inv.data || {}).slice(0, 5);
+                      return (
+                        <div key={i} style={{background:"#fff",border:"1px solid rgba(0,0,0,0.08)",borderRadius:14,padding:16}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:700,fontSize:14,marginBottom:6}}>{inv.farm || "(farm manquant)"} — date: <span style={{color:"#dc2626"}}>{inv.date || "(date manquante)"}</span></div>
+                              <div style={{fontSize:12,color:"#6e6e73",marginBottom:8}}>id: {inv.id} · {nbProducts} produits · notes: {inv.notes || "—"}</div>
+                              <div style={{fontSize:12,fontFamily:"'Space Mono',monospace",background:"#f5f5f7",padding:10,borderRadius:8}}>
+                                {sampleKeys.map(k => <div key={k}>{k}: {inv.data[k]}</div>)}
+                                {inv.data?.UREE !== undefined && <div style={{color:"#16a34a",fontWeight:700}}>UREE: {inv.data.UREE}</div>}
+                                {inv.data?.["ACIDE PHOSPHORIQUE"] !== undefined && <div style={{color:"#16a34a",fontWeight:700}}>ACIDE PHOSPHORIQUE: {inv.data["ACIDE PHOSPHORIQUE"]}</div>}
+                              </div>
+                            </div>
+                            <button onClick={() => handleDeleteInv(inv)} style={{background:"#fee2e2",color:"#dc2626",border:"none",borderRadius:8,padding:"8px 14px",fontWeight:700,fontSize:12,cursor:"pointer",whiteSpace:"nowrap"}}>🗑️ Supprimer</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {active === "globalstock" && (() => {
             const period = MONTH_PERIODS[reportMonth];
