@@ -89,13 +89,19 @@ const MONTH_PERIODS = {
 // = stock de la ferme calculé juste avant `start`, puis additionne les
 // mouvements de la période pour obtenir Entrées / Sorties / Consommation / Stock Final.
 function getFarmConsumptionReport(movements, farmName, physicalInventories, stockInitialForFarm, start, end) {
-  // Stock Initial = TOUJOURS base sur le dernier inventaire physique STRICTEMENT AVANT le debut
-  // de periode (jamais un inventaire tombant pendant le mois, meme si plus recent). Stock Final
-  // = Stock Initial + Entrees - Sorties - Conso du MOIS ENTIER (01-31), calcul purement
-  // arithmetique, sans tenir compte d'un eventuel inventaire physique tombant en cours de periode.
+  // Stock Initial = valeur BRUTE du dernier inventaire physique STRICTEMENT AVANT le debut de
+  // periode (25/07 pour un rapport d'aout) - jamais deduite/ajustee. La periode de calcul des
+  // Entrees/Sorties/Conso demarre a la date de CET INVENTAIRE (pas au 1er du mois), pour que tout
+  // mouvement survenu entre l'inventaire et le debut du mois calendaire (ex: 26-31/07) apparaisse
+  // visiblement dans Entrees/Sorties/Conso au lieu d'etre silencieusement absorbe dans Stock Initial.
   const invsBeforeStart = (physicalInventories || []).filter(inv => inv.farm === farmName && inv.date && inv.date < start);
-  const movementsBeforeStart = (movements || []).filter(m => m.date && m.date < start);
-  const initStockArr = calcFarmStock(movementsBeforeStart, farmName, stockInitialForFarm || [], invsBeforeStart);
+  const latestInvBeforeStart = invsBeforeStart.sort((a,b) => b.date.localeCompare(a.date))[0];
+  const effectiveStart = latestInvBeforeStart ? latestInvBeforeStart.date : start;
+
+  // Stock Initial = valeur brute de l'inventaire (aucun mouvement applique) - ou fallback saison si aucun inventaire.
+  const initStockArr = latestInvBeforeStart
+    ? calcFarmStock([], farmName, stockInitialForFarm || [], [latestInvBeforeStart])
+    : calcFarmStock((movements || []).filter(m => m.date && m.date < start), farmName, stockInitialForFarm || [], []);
 
   const rows = {};
   const ensure = (product, unit) => {
@@ -105,7 +111,7 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
   initStockArr.forEach(s => { ensure(s.product, s.unit).init = s.qty; });
 
   (movements || []).forEach(m => {
-    if (!m.date || m.date < start || m.date > end) return;
+    if (!m.date || m.date <= effectiveStart || m.date > end) return;
     if (m.farm !== farmName) return;
     const p = m.product;
     if (!p) return;
@@ -120,8 +126,8 @@ function getFarmConsumptionReport(movements, farmName, physicalInventories, stoc
     .map(r => ({ ...r, final: Math.max(0, r.init + r.ent - r.sort - r.cons) }))
     .filter(r => r.init > 0.001 || r.ent > 0.001 || r.sort > 0.001 || r.cons > 0.001 || r.final > 0.001)
     .sort((a,b) => a.product.localeCompare(b.product));
-  finalRows.effectiveStart = start;
-  finalRows.usesMidPeriodInv = false;
+  finalRows.effectiveStart = effectiveStart;
+  finalRows.usesMidPeriodInv = !!latestInvBeforeStart && effectiveStart !== start;
   return finalRows;
 }
 
@@ -1589,7 +1595,7 @@ export default function Dashboard({ user, userInfo }) {
                 </div>
                 {reportUsesMidPeriodInv && (
                   <div style={{marginBottom:16,padding:"12px 16px",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10,fontSize:13,color:"#1e40af"}}>
-                    ℹ️ Un inventaire physique du <strong>{reportEffectiveStart?.split("-").reverse().join("/")}</strong> existe pour cette ferme — comme il tombe pendant le mois de {period.label.split(" ")[0]}, le rapport part directement de cette date (au lieu du 1er du mois) pour rester exact. Entrées/Sorties/Conso ne comptent donc que <strong>depuis le {reportEffectiveStart?.split("-").reverse().join("/")}</strong>.
+                    ℹ️ Stock Initial = valeur brute de l'inventaire physique du <strong>{reportEffectiveStart?.split("-").reverse().join("/")}</strong> (dernier disponible avant le mois). Pour que les mouvements entre cette date et le 1er du mois soient bien comptés, Entrées/Sorties/Conso démarrent aussi <strong>depuis le {reportEffectiveStart?.split("-").reverse().join("/")}</strong> (pas le 1er).
                   </div>
                 )}
                 <div className="stats-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
